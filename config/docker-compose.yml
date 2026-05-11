@@ -1,0 +1,68 @@
+services:
+  faster-qwen3-tts:
+    image: faster-qwen3-tts-dgx-spark:v4
+    container_name: faster-qwen3-tts
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_TOKEN=${HF_TOKEN}
+    ports:
+      - "8020:8000"
+    volumes:
+      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
+      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
+      - /home/sparky/Projekte/TTS_Voices/speakers:/voices:ro
+    command: >
+      /bin/bash -c "
+      python3 /config/generate_voices.py &&
+      python3 /config/run_server.py
+      --model /models/Qwen3-TTS
+      --voices /config/voices.json
+      --port 8000
+      --max-seq-len 2048
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - dgx_net
+
+  faster-qwen3-tts-voicedesign:
+    image: faster-qwen3-tts-dgx-spark:v4
+    container_name: faster-qwen3-tts-voicedesign
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_TOKEN=${HF_TOKEN}
+    ports:
+      - "8021:8000"
+    volumes:
+      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-VoiceDesign:/models/Qwen3-TTS-VoiceDesign:ro
+      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
+    command: >
+      /bin/bash -c "
+      python3 /config/run_voicedesign_server.py
+      --model /models/Qwen3-TTS-VoiceDesign
+      --voices /config/voicedesign_voices.json
+      --port 8000
+      --max-seq-len 2048
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - dgx_net
+
+networks:
+  dgx_net:
+    external: true
