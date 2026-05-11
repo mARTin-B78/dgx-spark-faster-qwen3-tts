@@ -1,0 +1,34 @@
+{
+  "vd_british_male": {
+    "instruct": "A native British English male speaker with received pronunciation (RP) accent, clear articulation, calm and authoritative tone",
+    "language": "English"
+  },
+  "vd_british_female": {
+    "instruct": "A native British English female speaker with received pronunciation (RP) accent, warm and clearly articulated",
+    "language": "English"
+  },
+  "vd_british_male_casual": {
+    "instruct": "A young British English male speaker with a natural conversational RP accent, friendly and relaxed",
+    "language": "English"
+  },
+  "vd_british_female_warm": {
+    "instruct": "A middle-aged British English female speaker, warm southern English accent, gentle and expressive",
+    "language": "English"
+  },
+  "vd_german_male": {
+    "instruct": "A native German male speaker with standard Hochdeutsch pronunciation, clear articulation, no foreign accent, professional tone",
+    "language": "German"
+  },
+  "vd_german_female": {
+    "instruct": "A native German female speaker with standard Hochdeutsch pronunciation, warm and natural, no foreign accent",
+    "language": "German"
+  },
+  "vd_german_male_casual": {
+    "instruct": "A young native German male speaker, natural conversational Hochdeutsch, friendly and relaxed, no foreign accent",
+    "language": "German"
+  },
+  "vd_german_female_warm": {
+    "instruct": "A middle-aged native German female speaker, warm Hochdeutsch, expressive and clear, no foreign accent",
+    "language": "German"
+  }
+}

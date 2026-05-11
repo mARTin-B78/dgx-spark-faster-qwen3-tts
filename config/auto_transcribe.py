@@ -1,93 +1,65 @@
-"""
-Batch-transcribe speaker reference audio files using a local Whisper-compatible API.
-
-Creates .reference.txt files alongside each audio file in the speakers directory.
-These transcriptions are used by generate_voices.py to build the voice registry.
-
-Usage:
-    python auto_transcribe.py [--api-url http://localhost:8010/v1/audio/transcriptions]
-
-IMPORTANT: Reference audio for voice cloning should be 5-15 seconds long.
-Longer files will produce poor cloning results and slow down inference.
-"""
-
 import os
-import sys
-import json
-import argparse
 import requests
+import json
 
-def main():
-    parser = argparse.ArgumentParser(description="Batch-transcribe speaker reference audio")
-    parser.add_argument("--api-url", default="http://localhost:8010/v1/audio/transcriptions",
-                        help="Whisper-compatible transcription API URL")
-    parser.add_argument("--speaker-dir", default="./speakers",
-                        help="Directory containing speaker audio files")
-    parser.add_argument("--model", default="whisper-1",
-                        help="Transcription model name")
-    args = parser.parse_args()
+# Host-side paths (this script runs on the host, not inside the container)
+SCAN_DIRS = [
+    "/home/sparky/Docker/faster-qwen3-tts/config/speakers",
+    "/home/sparky/Projekte/TTS_Voices/speakers",
+]
+AUDIO_EXTS = (".wav", ".mp3", ".ogg", ".m4a")
+SKIP_DIRS = {"originals_backup", "xtts_multi_voice_sets", "txt"}
 
-    speaker_dir = args.speaker_dir
+whisper_api_url = "http://localhost:8010/v1/audio/transcriptions"
 
-    # Verify API is reachable
-    try:
-        requests.get(args.api_url.rsplit('/', 2)[0], timeout=5)
-    except requests.ConnectionError:
-        print(f"Error: Cannot reach transcription API at {args.api_url}")
-        print("Make sure your Whisper/ASR service is running.")
-        sys.exit(1)
+for scan_dir in SCAN_DIRS:
+    if not os.path.exists(scan_dir):
+        print(f"Skipping {scan_dir} (not found)")
+        continue
 
-    if not os.path.exists(speaker_dir):
-        print(f"Error: Speaker directory not found: {speaker_dir}")
-        sys.exit(1)
+    print(f"\nScanning {scan_dir} for missing transcripts...")
 
-    audio_files = [f for f in os.listdir(speaker_dir)
-                   if f.endswith(('.wav', '.mp3')) and not f.startswith('.')]
+    for root, dirs, files in os.walk(scan_dir):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
 
-    print(f"Found {len(audio_files)} audio files in {speaker_dir}")
+        for filename in sorted(files):
+            if not filename.lower().endswith(AUDIO_EXTS):
+                continue
 
-    for filename in sorted(audio_files):
-        base_name = os.path.splitext(filename)[0]
-        ref_txt_path = os.path.join(speaker_dir, f"{base_name}.reference.txt")
+            base_name = os.path.splitext(filename)[0]
+            ref_txt_path = os.path.join(root, f"{base_name}.reference.txt")
+            audio_path = os.path.join(root, filename)
 
-        if os.path.exists(ref_txt_path):
-            print(f"  Skipping {filename} (already transcribed)")
-            continue
+            if os.path.exists(ref_txt_path):
+                continue
 
-        filepath = os.path.join(speaker_dir, filename)
-        print(f"  Transcribing {filename}...", end=" ", flush=True)
+            print(f"Transcribing: {os.path.relpath(audio_path, scan_dir)}")
+            try:
+                with open(audio_path, "rb") as audio_file:
+                    response = requests.post(
+                        whisper_api_url,
+                        files={"file": (filename, audio_file)},
+                        data={"model": "large-v3", "response_format": "text"},
+                    )
 
-        try:
-            with open(filepath, 'rb') as f:
-                response = requests.post(
-                    args.api_url,
-                    files={"file": (filename, f)},
-                    data={"model": args.model},
-                    timeout=60,
-                )
+                if response.status_code == 200:
+                    transcript = response.text.strip()
+                    if transcript.startswith("{"):
+                        try:
+                            transcript = json.loads(transcript).get("text", transcript).strip()
+                        except json.JSONDecodeError:
+                            pass
 
-            if response.status_code == 200:
-                # Handle both JSON and plain text responses
-                try:
-                    text = response.json().get("text", "").strip()
-                except (json.JSONDecodeError, AttributeError):
-                    text = response.text.strip()
-
-                if text:
-                    with open(ref_txt_path, 'w', encoding='utf-8') as f:
-                        f.write(text)
-                    print(f"OK ({len(text)} chars)")
+                    with open(ref_txt_path, "w", encoding="utf-8") as f:
+                        f.write(transcript)
+                    print(f"  ✓ {transcript[:80]}")
                 else:
-                    print("EMPTY (no speech detected)")
-            else:
-                print(f"FAILED (HTTP {response.status_code})")
+                    print(f"  ✗ API error {response.status_code}: {response.text}")
 
-        except requests.Timeout:
-            print("TIMEOUT")
-        except Exception as e:
-            print(f"ERROR: {e}")
+            except requests.exceptions.ConnectionError:
+                print(f"  ✗ Cannot reach Whisper API at {whisper_api_url}")
+                raise SystemExit(1)
+            except Exception as e:
+                print(f"  ✗ Error on {filename}: {e}")
 
-    print("Done.")
-
-if __name__ == "__main__":
-    main()
+print("\nBatch transcription complete.")

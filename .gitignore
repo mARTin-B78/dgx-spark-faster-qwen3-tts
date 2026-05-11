@@ -1,21 +1,42 @@
-# Audio files (add your own voice references locally)
+# Upstream faster-qwen3-tts repo (tracked separately)
+build/
+
+# Personal voice recordings — keep only reference transcripts
 config/speakers/*.wav
 config/speakers/*.mp3
-config/speakers/originals_backup/
 
-# Generated at runtime
+# Private speakers — entire subtree
+config/speakers/privat/
+
+# Generated at container startup from speakers/
 config/voices.json
-config/voices.json.bak
+config/voices.json*
 
-# Environment
-.env
-*.pyc
-__pycache__/
+# Converted private audio (M4A → WAV, generated at runtime)
+config/converted/
 
-# Editor backups
+# Editor backup files
+*.py~
+*.yml~
+*.yaml~
 *~
-*.swp
 
-# OS
-.DS_Store
-Thumbs.db
+# Claude Code settings
+.claude/
+config/.claude/
+
+# Random generated files in project root
+json
+os
+*.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment files
+.env
+.env.*
