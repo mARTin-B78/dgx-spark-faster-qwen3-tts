@@ -40,7 +40,8 @@ if os.path.exists(speaker_dir):
 
             entry = {
                 "ref_audio": f"/config/speakers/{filename}",
-                "language": lang
+                "language": lang,
+                "chunk_size": 4,
             }
 
             # Look for matching reference text files

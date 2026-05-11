@@ -24,6 +24,7 @@ services:
       --model /models/Qwen3-TTS
       --voices /config/voices.json
       --port 8000
+      --max-seq-len 2048
       "
     deploy:
       resources:

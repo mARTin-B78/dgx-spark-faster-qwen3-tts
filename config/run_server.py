@@ -8,15 +8,68 @@ Endpoints added:
   GET /v1/audio/models  - Lists available voices (OpenWebUI fallback)
   GET /speakers         - Lists speaker IDs (SillyTavern)
   OPTIONS /{path}       - Pre-flight CORS handler
+
+Startup:
+  CUDA graphs are warmed up on server start so the first real request
+  does not pay the 7-8s graph-compilation penalty.
 """
 
+import asyncio
+import logging
 import sys
 import json
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 # Point Python to the app directory inside the container
 sys.path.append("/app/examples")
 import openai_server
+
+logger = logging.getLogger(__name__)
+
+
+def _do_warmup():
+    """Run one short generation to compile CUDA graphs before serving requests."""
+    model = openai_server.tts_model
+    voices = openai_server.voices
+    default_voice = openai_server.default_voice
+
+    if model is None or not voices or default_voice is None:
+        logger.warning("Warmup skipped: model or voices not ready")
+        return
+
+    voice_cfg = voices.get(default_voice, {})
+    ref_audio = voice_cfg.get("ref_audio")
+    if not ref_audio:
+        logger.warning("Warmup skipped: no ref_audio on default voice")
+        return
+
+    logger.info("Warming up CUDA graphs (first request will be fast)...")
+    try:
+        for _ in model.generate_voice_clone_streaming(
+            text="Warmup.",
+            language=voice_cfg.get("language", "Auto"),
+            ref_audio=ref_audio,
+            ref_text=voice_cfg.get("ref_text", ""),
+            chunk_size=12,
+        ):
+            pass
+        logger.info("CUDA warmup complete — server ready.")
+    except Exception as exc:
+        logger.warning("Warmup failed (non-fatal): %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _do_warmup)
+    yield
+
+
+# Attach lifespan to the existing FastAPI app
+openai_server.app.router.lifespan_context = lifespan
 
 # Load generated voices
 try:
