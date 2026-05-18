@@ -1,0 +1,47 @@
+{
+  "Ryan": {
+    "speaker": "Ryan",
+    "language": "English",
+    "instruct": ""
+  },
+  "Aiden": {
+    "speaker": "Aiden",
+    "language": "English",
+    "instruct": ""
+  },
+  "Vivian": {
+    "speaker": "Vivian",
+    "language": "Chinese",
+    "instruct": ""
+  },
+  "Serena": {
+    "speaker": "Serena",
+    "language": "Chinese",
+    "instruct": ""
+  },
+  "Uncle_Fu": {
+    "speaker": "Uncle_Fu",
+    "language": "Chinese",
+    "instruct": ""
+  },
+  "Dylan": {
+    "speaker": "Dylan",
+    "language": "Chinese",
+    "instruct": ""
+  },
+  "Eric": {
+    "speaker": "Eric",
+    "language": "Chinese",
+    "instruct": ""
+  },
+  "Ono_Anna": {
+    "speaker": "Ono_Anna",
+    "language": "Japanese",
+    "instruct": ""
+  },
+  "Sohee": {
+    "speaker": "Sohee",
+    "language": "Korean",
+    "instruct": ""
+  }
+}
