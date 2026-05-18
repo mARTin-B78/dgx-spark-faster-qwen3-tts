@@ -8,6 +8,13 @@ config/speakers/*.mp3
 # Private speakers — entire subtree
 config/speakers/privat/
 
+# Speaker directory extras
+config/speakers/backup.zip
+config/speakers/Link to speakers
+
+# VS Code workspace file
+config/faster-qwen3-tts.code-workspace
+
 # Generated at container startup from speakers/
 config/voices.json
 config/voices.json*
