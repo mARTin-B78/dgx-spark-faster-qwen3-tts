@@ -63,6 +63,44 @@ services:
     networks:
       - dgx_net
 
+  qwen3-tts-streaming:
+    image: qwen3-tts-streaming-dgx-spark:latest
+    container_name: qwen3-tts-streaming
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_TOKEN=${HF_TOKEN}
+      - PYTHONUNBUFFERED=1
+      - QWEN_TTS_MODEL=/models/Qwen3-TTS
+      - QWEN_TTS_VOICES=/config/voices.json
+      - QWEN_TTS_MAX_SEQ_LEN=4096
+    ports:
+      - "8023:8000"
+    volumes:
+      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
+      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
+      - /home/sparky/Projekte/TTS_Voices/speakers:/voices:ro
+    command: >
+      /bin/bash -c "
+      python3 /config/generate_voices.py &&
+      python3 /config/run_server.py
+      --model /models/Qwen3-TTS
+      --voices /config/voices.json
+      --port 8000
+      --max-seq-len 4096
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - dgx_net
+
 networks:
   dgx_net:
     external: true
