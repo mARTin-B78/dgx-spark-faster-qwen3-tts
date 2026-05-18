@@ -1,24 +1,25 @@
 """
-OpenAI-compatible TTS server for Qwen3-TTS-12Hz-1.7B-VoiceDesign.
+OpenAI-compatible TTS server for Qwen3-TTS CustomVoice models.
 
-Voices are defined in voicedesign_voices.json as:
-  { "voice_id": { "instruct": "...", "language": "..." } }
+Voices are defined in customvoice_voices.json as:
+  { "voice_id": { "speaker": "Ryan", "language": "English", "instruct": "" } }
 
-No ref_audio needed — the instruct text fully describes the voice.
+The request body may also include "language" and "instruct" fields to override
+the configured defaults for a single generation.
 """
+import argparse
+import asyncio
 import json
 import logging
 import queue
-import threading
-import asyncio
-import argparse
-import numpy as np
 import sys
+import threading
 from typing import Optional
 
+import numpy as np
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response, StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 sys.path.append("/app")
@@ -36,14 +37,10 @@ DEFAULT_MAX_NEW_TOKENS = 2048
 _model_lock = threading.Lock()
 
 
-# ---------------------------------------------------------------------------
-# Request schema (OpenAI TTS compatible)
-# ---------------------------------------------------------------------------
-
 class SpeechRequest(BaseModel):
     model: str = "tts-1"
     input: str
-    voice: str = "vd_british_male"
+    voice: str = "Ryan"
     response_format: str = "wav"
     speed: float = 1.0
     language: Optional[str] = None
@@ -51,16 +48,13 @@ class SpeechRequest(BaseModel):
     max_new_tokens: Optional[int] = None
 
 
-# ---------------------------------------------------------------------------
-# Audio helpers
-# ---------------------------------------------------------------------------
-
 def _to_pcm16(audio: np.ndarray) -> bytes:
     return (audio * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
 
 
 def _wav_header(sample_rate: int) -> bytes:
     import struct
+
     return struct.pack(
         "<4sI4s4sIHHIIHH4sI",
         b"RIFF", 0xFFFFFFFF, b"WAVE",
@@ -71,8 +65,9 @@ def _wav_header(sample_rate: int) -> bytes:
 
 
 def _to_mp3_bytes(audio: np.ndarray, sr: int) -> bytes:
-    from pydub import AudioSegment
     import io
+    from pydub import AudioSegment
+
     pcm = _to_pcm16(audio)
     seg = AudioSegment(pcm, frame_rate=sr, sample_width=2, channels=1)
     buf = io.BytesIO()
@@ -90,49 +85,40 @@ def resolve_voice(name: str) -> dict:
     raise HTTPException(status_code=404, detail=f"Voice {name!r} not found")
 
 
-# ---------------------------------------------------------------------------
-# Generation helpers
-# ---------------------------------------------------------------------------
-
 def _request_generation_params(req: SpeechRequest, voice_cfg: dict) -> dict:
-    instruct = req.instruct if req.instruct is not None else voice_cfg.get("instruct", "")
-    language = req.language or voice_cfg.get("language", "English")
     return {
         "text": req.input,
-        "instruct": instruct,
-        "language": language,
+        "speaker": voice_cfg.get("speaker") or req.voice,
+        "language": req.language or voice_cfg.get("language", "Auto"),
+        "instruct": req.instruct if req.instruct is not None else voice_cfg.get("instruct") or None,
         "max_new_tokens": req.max_new_tokens or int(voice_cfg.get("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)),
     }
 
 
 async def _stream_chunks(params: dict):
     q: queue.Queue = queue.Queue()
-    _DONE = object()
+    done = object()
 
     def producer():
         try:
             with _model_lock:
-                for chunk, _sr, _timing in tts_model.generate_voice_design_streaming(**params):
+                for chunk, _sr, _timing in tts_model.generate_custom_voice_streaming(**params):
                     q.put(chunk)
         except Exception as exc:
             q.put(exc)
         finally:
-            q.put(_DONE)
+            q.put(done)
 
     threading.Thread(target=producer, daemon=True).start()
     loop = asyncio.get_event_loop()
     while True:
         item = await loop.run_in_executor(None, q.get)
-        if item is _DONE:
+        if item is done:
             break
         if isinstance(item, Exception):
             raise item
         yield _to_pcm16(item)
 
-
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health():
@@ -150,16 +136,18 @@ async def create_speech(req: SpeechRequest):
     params = _request_generation_params(req, voice_cfg)
     fmt = req.response_format.lower()
 
-    _CONTENT_TYPES = {"wav": "audio/wav", "pcm": "audio/pcm", "mp3": "audio/mpeg"}
-    if fmt not in _CONTENT_TYPES:
+    content_types = {"wav": "audio/wav", "pcm": "audio/pcm", "mp3": "audio/mpeg"}
+    if fmt not in content_types:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt!r}")
 
     if fmt == "mp3":
         loop = asyncio.get_event_loop()
-        def _gen():
+
+        def generate():
             with _model_lock:
-                return tts_model.generate_voice_design(**params)
-        audio_arrays, sr = await loop.run_in_executor(None, _gen)
+                return tts_model.generate_custom_voice(**params)
+
+        audio_arrays, sr = await loop.run_in_executor(None, generate)
         audio = audio_arrays[0] if audio_arrays else np.zeros(1, dtype=np.float32)
         return Response(content=_to_mp3_bytes(audio, sr), media_type="audio/mpeg")
 
@@ -169,7 +157,7 @@ async def create_speech(req: SpeechRequest):
         async for raw in _stream_chunks(params):
             yield raw
 
-    return StreamingResponse(audio_stream(), media_type=_CONTENT_TYPES[fmt])
+    return StreamingResponse(audio_stream(), media_type=content_types[fmt])
 
 
 _voice_list = None
@@ -186,33 +174,33 @@ def _build_voice_list():
 async def list_models():
     return _models_response
 
+
 @app.get("/v1/audio/voices")
 async def list_audio_voices():
     return _models_response
+
 
 @app.get("/v1/audio/models")
 async def list_audio_models():
     return _models_response
 
+
 @app.get("/speakers")
 async def get_speakers():
     return list(voices.keys())
+
 
 @app.options("/{path:path}")
 async def options_handler(path: str):
     return JSONResponse(content={"status": "ok"})
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main():
     global tts_model, voices, default_voice, SAMPLE_RATE, DEFAULT_MAX_NEW_TOKENS
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="/models/Qwen3-TTS-VoiceDesign")
-    parser.add_argument("--voices", default="/config/voicedesign_voices.json")
+    parser.add_argument("--model", default="/models/Qwen3-TTS-CustomVoice")
+    parser.add_argument("--voices", default="/config/customvoice_voices.json")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--device", default="cuda")
@@ -226,7 +214,8 @@ def main():
     _build_voice_list()
 
     import torch
-    logger.info("Loading VoiceDesign model %s …", args.model)
+
+    logger.info("Loading CustomVoice model %s ...", args.model)
     tts_model = FasterQwen3TTS.from_pretrained(
         args.model,
         device=args.device,
