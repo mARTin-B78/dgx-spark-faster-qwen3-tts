@@ -1,7 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Qwen3-TTS GPU Stack
+#
+#  Ports:
+#    8020 -> Voice clone, OpenAI-compatible /v1/audio/speech
+#    8021 -> VoiceDesign model for prompt-designed voices
+#    8022 -> CustomVoice model
+#    8023 -> Low-latency streaming voice clone endpoint
+#
+#  Voice files:
+#    The voice clone and streaming services scan active voices from:
+#    /home/sparky/Projekte/TTS_Voices/active_voices
+#
+#  Portainer note:
+#    Set HF_TOKEN in the stack environment if the models ever need Hugging Face access.
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  faster-qwen3-tts:
+  # Standard voice cloning backend used by TTS Voice Creator and other OpenAI-compatible clients.
+  faster-qwen3-tts-voiceclone:
     image: faster-qwen3-tts-dgx-spark:v4
-    container_name: faster-qwen3-tts
+    container_name: faster-qwen3-tts-voiceclone
     restart: unless-stopped
     runtime: nvidia
     environment:
@@ -32,6 +50,7 @@ services:
     networks:
       - dgx_net
 
+  # VoiceDesign backend: creates speech from a descriptive voice prompt instead of a reference clip.
   faster-qwen3-tts-voicedesign:
     image: faster-qwen3-tts-dgx-spark:v4
     container_name: faster-qwen3-tts-voicedesign
@@ -63,6 +82,7 @@ services:
     networks:
       - dgx_net
 
+  # CustomVoice backend: keeps the separate CustomVoice model available on port 8022.
   faster-qwen3-tts-customvoice:
     image: faster-qwen3-tts-dgx-spark:v4
     container_name: faster-qwen3-tts-customvoice
@@ -94,9 +114,10 @@ services:
     networks:
       - dgx_net
 
-  qwen3-tts-streaming:
+  # Streaming voice clone backend: same active voices as 8020, but streams WAV chunks while generating.
+  faster-qwen3-tts-streaming:
     image: qwen3-tts-streaming-dgx-spark:latest
-    container_name: qwen3-tts-streaming
+    container_name: faster-qwen3-tts-streaming
     restart: unless-stopped
     runtime: nvidia
     environment:
