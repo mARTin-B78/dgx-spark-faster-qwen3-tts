@@ -4,15 +4,21 @@ Run [faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts) on the
 
 ![Faster-Qwen3-TTS on NVIDIA DGX Spark](https://global.discourse-cdn.com/nvidia/original/4X/5/8/0/58098a94620f87839a47638804ecff6c2c554211.png)
 
-This repo packages the DGX Spark fixes plus API servers for three Qwen3-TTS modes:
+This repo packages the DGX Spark fixes plus four OpenAI-compatible TTS backends:
 
-| Mode | Port | Model | Voice source |
+| Backend | Port | Image | Voice source |
 |---|---:|---|---|
-| VoiceClone | `8020` | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | Reference audio plus transcript |
-| VoiceDesign | `8021` | `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | Plain-English voice instructions |
-| CustomVoice | `8022` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | Built-in speaker IDs |
+| VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Reference audio plus transcript |
+| VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Text prompt describes the voice; no reference needed |
+| CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Separate CustomVoice model variant |
+| Streaming | `8023` | `martinb78/qwen3-tts-streaming-dgx-spark:latest` | Same voices as `8020`, but streams WAV chunks while generating |
 
-All modes expose the OpenAI `/v1/audio/speech` contract and work with **OpenWebUI**, **SillyTavern**, **llama-swap**, `curl`, or any OpenAI-compatible client.
+All four backends expose the OpenAI `/v1/audio/speech` contract and work with **OpenWebUI**, **SillyTavern**, **llama-swap**, `curl`, or any OpenAI-compatible client.
+
+Both Docker images are published and publicly available:
+
+- `martinb78/faster-qwen3-tts-dgx-spark:v4` - used by VoiceClone, VoiceDesign, and CustomVoice.
+- `martinb78/qwen3-tts-streaming-dgx-spark:latest` - used by the streaming service.
 
 ## What this solves
 
@@ -58,9 +64,16 @@ Check the server:
 curl http://localhost:8020/health
 ```
 
-## Full stack: VoiceClone, VoiceDesign, CustomVoice
+## Full stack: VoiceClone, VoiceDesign, CustomVoice, Streaming
 
-Use `config/docker-compose.yml` when you want all Qwen3-TTS modes side by side. The file also includes an optional low-latency streaming VoiceClone service on port `8023`; remove or comment that service if you only want the three main endpoints.
+Use `config/docker-compose.yml` when you want all four OpenAI-compatible backends side by side:
+
+```text
+8020  ->  VoiceClone   (/v1/audio/speech, reference audio)
+8021  ->  VoiceDesign  (text prompt describes the voice, no reference needed)
+8022  ->  CustomVoice  (separate CustomVoice model variant)
+8023  ->  Streaming    (same as 8020 but streams WAV chunks while generating)
+```
 
 1. Download the models you want to run:
 
@@ -94,6 +107,7 @@ docker compose up -d
 curl http://localhost:8020/health   # VoiceClone
 curl http://localhost:8021/health   # VoiceDesign
 curl http://localhost:8022/health   # CustomVoice
+curl http://localhost:8023/health   # Streaming VoiceClone
 ```
 
 ## Adding VoiceClone voices
@@ -167,6 +181,10 @@ CustomVoice uses the model's built-in speaker names. Define the speaker IDs you 
 
 Then call the CustomVoice service on port `8022`.
 
+## Streaming backend
+
+The streaming service on port `8023` uses the same generated `config/voices.json` and active VoiceClone reference voices as port `8020`, but returns WAV chunks while generation is still running. Use it when time-to-first-audio matters more than waiting for the complete WAV response.
+
 ## API
 
 ### Endpoints
@@ -239,6 +257,15 @@ curl http://localhost:8022/v1/audio/speech \
   --output customvoice.wav
 ```
 
+Streaming VoiceClone on port `8023`:
+
+```bash
+curl http://localhost:8023/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"model":"tts-1","input":"This starts playing as chunks arrive.","voice":"EN_M_Speaker_Name","response_format":"wav"}' \
+  --output streaming.wav
+```
+
 Per-request fields win over the JSON voice config entry, so one configured voice can still be adjusted by callers for language, tone, or generation length.
 
 ## Client configuration
@@ -250,7 +277,7 @@ In OpenWebUI Settings > Audio > Text-to-Speech:
 | Setting | Value |
 |---|---|
 | Engine | OpenAI |
-| URL | `http://your-host:8020/v1`, `http://your-host:8021/v1`, or `http://your-host:8022/v1` |
+| URL | `http://your-host:8020/v1`, `http://your-host:8021/v1`, `http://your-host:8022/v1`, or `http://your-host:8023/v1` |
 | API Key | `sk-dummy-key` |
 | TTS Model | `tts-1` |
 | TTS Voice | Select from dropdown |
@@ -263,6 +290,7 @@ Point the client's OpenAI-compatible TTS base URL at the service you want:
 http://your-host:8020/v1   # VoiceClone
 http://your-host:8021/v1   # VoiceDesign
 http://your-host:8022/v1   # CustomVoice
+http://your-host:8023/v1   # Streaming VoiceClone
 ```
 
 ## Benchmarking
@@ -286,7 +314,7 @@ The first request after container startup can be slower because CUDA graph captu
 ## Performance and memory notes
 
 - The 1.7B Qwen3-TTS models use about 6 GB of GPU memory each in bfloat16.
-- The forum playbook shows the three API containers running together on DGX Spark with low visible memory pressure, but exact usage depends on model size, sequence length, and warmup state.
+- The forum playbook shows the four API containers running together on DGX Spark with low visible memory pressure, but exact usage depends on model size, sequence length, and warmup state.
 - Use the 0.6B Qwen3-TTS variants if you want a lighter multi-service setup.
 - `--max-seq-len 2048` handles most sentence-style TTS requests. Long-form narration may need `4096`, with more memory required.
 - Pin services to different GPUs with `NVIDIA_VISIBLE_DEVICES=0`, `NVIDIA_VISIBLE_DEVICES=1`, and so on if your system has more than one GPU.
@@ -313,7 +341,7 @@ The first request after container startup can be slower because CUDA graph captu
 - [faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts) by Andres Marafioti.
 - [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) by the Alibaba Qwen team.
 - DGX Spark compatibility, Docker, and OpenAI-compatible API packaging by [mARTin-B78](https://github.com/mARTin-B78).
-- NVIDIA Developer Forum playbook: [Three times (VoiceClone | VoiceDesign | CustomVoice) - Faster-Qwen3-TTS for NVIDIA DGX Spark (GB10)](https://forums.developer.nvidia.com/t/three-times-voiceclone-voicedesign-customvoice-faster-qwen3-tts-for-nvidia-dgx-spark-gb10/370530).
+- NVIDIA Developer Forum playbook and source for the four-backend layout: [Three times (VoiceClone | VoiceDesign | CustomVoice) - Faster-Qwen3-TTS for NVIDIA DGX Spark (GB10)](https://forums.developer.nvidia.com/t/three-times-voiceclone-voicedesign-customvoice-faster-qwen3-tts-for-nvidia-dgx-spark-gb10/370530).
 
 ## License
 
