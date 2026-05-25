@@ -18,7 +18,7 @@
 services:
   # Standard voice cloning backend used by TTS Voice Creator and other OpenAI-compatible clients.
   faster-qwen3-tts-voiceclone:
-    image: faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:v4
     container_name: faster-qwen3-tts-voiceclone
     restart: unless-stopped
     runtime: nvidia
@@ -52,7 +52,7 @@ services:
 
   # VoiceDesign backend: creates speech from a descriptive voice prompt instead of a reference clip.
   faster-qwen3-tts-voicedesign:
-    image: faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:v4
     container_name: faster-qwen3-tts-voicedesign
     restart: unless-stopped
     runtime: nvidia
@@ -84,7 +84,7 @@ services:
 
   # CustomVoice backend: keeps the separate CustomVoice model available on port 8022.
   faster-qwen3-tts-customvoice:
-    image: faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:v4
     container_name: faster-qwen3-tts-customvoice
     restart: unless-stopped
     runtime: nvidia
@@ -116,7 +116,7 @@ services:
 
   # Streaming voice clone backend: same active voices as 8020, but streams WAV chunks while generating.
   faster-qwen3-tts-streaming:
-    image: qwen3-tts-streaming-dgx-spark:latest
+    image: martinb78/qwen3-tts-streaming-dgx-spark:latest
     container_name: faster-qwen3-tts-streaming
     restart: unless-stopped
     runtime: nvidia
