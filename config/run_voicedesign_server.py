@@ -20,6 +20,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, StreamingResponse, JSONResponse
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
 sys.path.append("/app")
 from faster_qwen3_tts.model import FasterQwen3TTS
@@ -34,6 +35,51 @@ default_voice: str = None
 SAMPLE_RATE = 24000
 DEFAULT_MAX_NEW_TOKENS = 2048
 _model_lock = threading.Lock()
+_load_model_kwargs = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _do_load_and_warmup)
+    yield
+
+
+def _do_load_and_warmup():
+    global tts_model, SAMPLE_RATE
+    import torch
+    args = _load_model_kwargs
+    try:
+        logger.info("Loading VoiceDesign model %s …", args.model)
+        model = FasterQwen3TTS.from_pretrained(
+            args.model,
+            device=args.device,
+            dtype=torch.bfloat16,
+            attn_implementation="sdpa",
+            max_seq_len=args.max_seq_len,
+        )
+        SAMPLE_RATE = model.sample_rate
+        logger.info("Model ready. Sample rate: %d Hz", SAMPLE_RATE)
+
+        # Warmup
+        logger.info("Warming up CUDA graphs (first request will be fast)...")
+        try:
+            for _ in model.generate_voice_design_streaming(
+                text="Warmup.",
+                instruct="Warmup.",
+                language="English"
+            ):
+                pass
+            logger.info("CUDA warmup complete — server ready.")
+        except Exception as exc:
+            logger.warning("Warmup failed (non-fatal): %s", exc)
+
+        tts_model = model
+    except Exception as exc:
+        logger.error("Failed to load model: %s", exc)
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +254,7 @@ async def options_handler(path: str):
 # ---------------------------------------------------------------------------
 
 def main():
-    global tts_model, voices, default_voice, SAMPLE_RATE, DEFAULT_MAX_NEW_TOKENS
+    global voices, default_voice, SAMPLE_RATE, DEFAULT_MAX_NEW_TOKENS, _load_model_kwargs
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="/models/Qwen3-TTS-VoiceDesign")
@@ -219,23 +265,12 @@ def main():
     parser.add_argument("--max-seq-len", type=int, default=2048)
     args = parser.parse_args()
     DEFAULT_MAX_NEW_TOKENS = args.max_seq_len
+    _load_model_kwargs = args
 
     with open(args.voices) as f:
         voices = json.load(f)
     default_voice = next(iter(voices), None)
     _build_voice_list()
-
-    import torch
-    logger.info("Loading VoiceDesign model %s …", args.model)
-    tts_model = FasterQwen3TTS.from_pretrained(
-        args.model,
-        device=args.device,
-        dtype=torch.bfloat16,
-        attn_implementation="sdpa",
-        max_seq_len=args.max_seq_len,
-    )
-    SAMPLE_RATE = tts_model.sample_rate
-    logger.info("Model ready. Sample rate: %d Hz", SAMPLE_RATE)
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
