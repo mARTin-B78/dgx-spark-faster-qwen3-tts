@@ -333,7 +333,7 @@ The first request after container startup can be slower because CUDA graph captu
 
 - NVIDIA DGX Spark GB10, or another ARM64 + NVIDIA GPU setup with CUDA 13 support.
 - CUDA driver 580+ with CUDA 13.0 support.
-- Docker plus NVIDIA Container Toolkit.
+- Docker plus NVIDIA Container Toolkit. Make sure you have configured the runtime: `sudo nvidia-ctk runtime configure --runtime=docker` and restarted the Docker daemon.
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Credits
