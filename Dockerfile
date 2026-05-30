@@ -20,7 +20,7 @@ ARG FASTER_QWEN3_TTS_REF=main
 RUN git clone --depth 1 --branch ${FASTER_QWEN3_TTS_REF} \
     https://github.com/andimarafioti/faster-qwen3-tts.git /app
 
-# Apply DGX Spark patches (max-seq-len support for long reference audio)
+# Apply DGX Spark patches (non_streaming_mode=True, per-voice temperature/top_k/top_p)
 COPY patches/openai_server.patch /tmp/
 RUN cd /app && git apply /tmp/openai_server.patch || true
 
