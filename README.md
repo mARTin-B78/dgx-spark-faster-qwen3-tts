@@ -336,6 +336,12 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.2 — 2026-05-30
+**Fix: voice drift on streaming port 8023 + per-voice temperature persists across restarts**
+
+- Streaming service (port 8023) was using the pre-v5 image (`martinb78/faster-qwen3-tts-dgx-spark:streaming`) which still had `non_streaming_mode=False` — the same voice drift bug as voiceclone had before v5. Fixed by switching streaming to `:latest` which carries the v5 patch. No image rebuild needed; compose-only change.
+- `config/generate_voices.py` previously overwrote `voices.json` completely on every container start, discarding any manually added `temperature`, `top_k`, or `top_p` fields. Now merges from the existing `voices.json` so user-added sampling parameters survive restarts.
+
 ### v6 — 2026-05-30
 **Restore `--max-seq-len`, consolidate Docker files, merge streaming repo**
 
