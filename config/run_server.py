@@ -54,6 +54,7 @@ def _do_warmup():
             ref_audio=ref_audio,
             ref_text=voice_cfg.get("ref_text", ""),
             chunk_size=12,
+            non_streaming_mode=True,
         ):
             pass
         logger.info("CUDA warmup complete — server ready.")

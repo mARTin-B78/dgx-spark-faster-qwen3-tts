@@ -8,16 +8,16 @@ This repo packages the DGX Spark fixes plus four OpenAI-compatible TTS backends:
 
 | Backend | Port | Image | Voice source |
 |---|---:|---|---|
-| VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Reference audio plus transcript |
-| VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Text prompt describes the voice; no reference needed |
-| CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:v4` | Separate CustomVoice model variant |
+| VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Reference audio plus transcript |
+| VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Text prompt describes the voice; no reference needed |
+| CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Separate CustomVoice model variant |
 | Streaming | `8023` | `martinb78/qwen3-tts-streaming-dgx-spark:latest` | Same voices as `8020`, but streams WAV chunks while generating |
 
 All four backends expose the OpenAI `/v1/audio/speech` contract and work with **OpenWebUI**, **SillyTavern**, **llama-swap**, `curl`, or any OpenAI-compatible client.
 
 Both Docker images are published and publicly available:
 
-- `martinb78/faster-qwen3-tts-dgx-spark:v4` - used by VoiceClone, VoiceDesign, and CustomVoice.
+- `martinb78/faster-qwen3-tts-dgx-spark:v5` - used by VoiceClone, VoiceDesign, and CustomVoice.
 - `martinb78/qwen3-tts-streaming-dgx-spark:latest` - used by the streaming service.
 
 ## What this solves
@@ -335,6 +335,33 @@ The first request after container startup can be slower because CUDA graph captu
 - CUDA driver 580+ with CUDA 13.0 support.
 - Docker plus NVIDIA Container Toolkit. Make sure you have configured the runtime: `sudo nvidia-ctk runtime configure --runtime=docker` and restarted the Docker daemon.
 - Local Qwen3-TTS model weights from Hugging Face.
+
+## Changelog
+
+### v5 — 2026-05-30
+**Fix: voice drifts and gender changes on long paragraphs (VoiceClone)**
+
+The VoiceClone server was using `non_streaming_mode=False`, a mode designed for streaming LLM→TTS pipelines where the text arrives token by token. In this mode only **one text token** enters the model's KV cache during prefill; the rest are fed one-per-codec-step via a `trailing_text_hiddens` tensor. For a typical 54-word paragraph that tensor holds ~49 steps (~4 seconds of guidance) while the actual speech takes ~18 seconds — leaving **77 % of the audio generated with no text conditioning at all**. The model free-runs for that portion and drifts away from the reference voice, sometimes changing gender entirely.
+
+The fix is to use `non_streaming_mode=True` (already the default for VoiceDesign and CustomVoice), which puts the full text in the prefill so the model can attend to it throughout generation. Temperature was also lowered from 0.9 to 0.8 and nucleus sampling (`top_p=0.9`) added to reduce accumulated stochasticity over long runs. All three parameters are now per-voice configurable in `voices.json`.
+
+Changes:
+- `patches/openai_server.patch` updated: VoiceClone streaming and MP3 paths now use `non_streaming_mode=True`
+- `config/run_server.py`: warmup call aligned to `non_streaming_mode=True`
+- Temperature default 0.9 → 0.8; `top_p=0.9` added; both overridable per voice via `voices.json`
+
+### v4 — 2026-05-24
+- Add async model loading and CUDA warmup for VoiceDesign and CustomVoice servers.
+- Replace test beep with real William and Natasha voice samples.
+
+### v3 — earlier
+- Add streaming TTS backend (port 8023).
+- Add CustomVoice server, benchmark tool, and VoiceDesign API improvements.
+- Add multi-source voice pipeline with VoiceDesign support.
+
+### v2 — earlier
+- Reduce latency: CUDA warmup, chunk_size=4, max-seq-len 2048.
+- Initial DGX Spark (GB10 / ARM64 / CUDA 13) packaging.
 
 ## Credits
 
