@@ -22,7 +22,7 @@ RUN git clone --depth 1 --branch ${FASTER_QWEN3_TTS_REF} \
 
 # Apply DGX Spark patches (non_streaming_mode=True, per-voice temperature/top_k/top_p)
 COPY patches/openai_server.patch /tmp/
-RUN cd /app && git apply /tmp/openai_server.patch || true
+RUN cd /app && git apply /tmp/openai_server.patch
 
 # Create virtual environment (Ubuntu 24.04 enforces PEP 668)
 ENV VIRTUAL_ENV=/opt/venv
