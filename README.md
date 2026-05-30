@@ -337,11 +337,13 @@ The first request after container startup can be slower because CUDA graph captu
 ## Changelog
 
 ### v6 — 2026-05-30
-**Consolidate Docker files into `docker/` folder**
+**Restore `--max-seq-len`, consolidate Docker files, merge streaming repo**
 
+- Restored `--max-seq-len` support in VoiceClone: upstream `openai_server.py` gained this argument after v5 was built; patch regenerated against current upstream to add it and wire it to `FasterQwen3TTS.from_pretrained()`
 - Moved full 4-service compose from `config/docker-compose.yml` → `docker/docker-compose.yml`
 - Moved single-service quickstart from root `docker-compose.yml` → `docker/docker-compose.simple.yml`
-- Consolidated streaming image into `martinb78/faster-qwen3-tts-dgx-spark:streaming` tag; removed separate `qwen3-tts-streaming-dgx-spark` repository
+- Merged streaming image into `martinb78/faster-qwen3-tts-dgx-spark:streaming` tag; removed separate `qwen3-tts-streaming-dgx-spark` repository
+- Removed `|| true` from Dockerfile `git apply` step so patch failures fail the build loudly
 
 ### v5 — 2026-05-30
 **Fix: voice drifts and gender changes on long paragraphs (VoiceClone)**
