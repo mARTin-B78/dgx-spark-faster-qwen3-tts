@@ -20,6 +20,16 @@ SCAN_DIRS = [
     "/voices",
 ]
 
+# Load existing voices.json so manually added fields (temperature, top_k,
+# top_p, chunk_size overrides, etc.) survive a container restart.
+_existing = {}
+if os.path.exists(output_file):
+    try:
+        with open(output_file, encoding="utf-8") as _f:
+            _existing = json.load(_f)
+    except (json.JSONDecodeError, OSError):
+        pass
+
 voices = {}
 
 
@@ -94,6 +104,13 @@ for scan_dir in SCAN_DIRS:
             elif os.path.exists(txt):
                 with open(txt, encoding="utf-8") as f:
                     entry["ref_text"] = f.read().strip()
+
+            # Preserve any user-added fields from the previous voices.json
+            # (temperature, top_k, top_p, chunk_size overrides, etc.)
+            if voice_id in _existing:
+                for key, val in _existing[voice_id].items():
+                    if key not in entry:
+                        entry[key] = val
 
             voices[voice_id] = entry
 
