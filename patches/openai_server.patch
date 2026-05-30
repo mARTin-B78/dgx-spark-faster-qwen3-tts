@@ -1,11 +1,11 @@
 diff --git a/examples/openai_server.py b/examples/openai_server.py
-index 61047ea..2b0c8bb 100644
+index 2199e14..cb44644 100644
 --- a/examples/openai_server.py
 +++ b/examples/openai_server.py
-@@ -187,7 +187,10 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+@@ -185,7 +185,10 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+                     ref_audio=voice_cfg["ref_audio"],
                      ref_text=voice_cfg.get("ref_text", ""),
                      chunk_size=voice_cfg.get("chunk_size", 12),
-                     instruct=voice_cfg.get("instruct"),
 -                    non_streaming_mode=False,
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
@@ -14,28 +14,30 @@ index 61047ea..2b0c8bb 100644
                  ):
                      q.put(chunk)
          except Exception as exc:
-@@ -252,6 +255,10 @@ async def create_speech(req: SpeechRequest):
+@@ -249,6 +252,10 @@ async def create_speech(req: SpeechRequest):
+                     language=voice_cfg.get("language", "Auto"),
                      ref_audio=voice_cfg["ref_audio"],
                      ref_text=voice_cfg.get("ref_text", ""),
-                     instruct=voice_cfg.get("instruct"),
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
 +                    top_k=voice_cfg.get("top_k", 50),
 +                    top_p=voice_cfg.get("top_p", 0.9),
                  )
-
+ 
          audio_arrays, sr = await loop.run_in_executor(None, _generate)
-@@ -306,4 +309,5 @@ def _parse_args():
+@@ -306,6 +313,7 @@ def _parse_args():
      p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
      p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
      p.add_argument("--device", default="cuda", help="Torch device (default: cuda)")
 +    p.add_argument("--max-seq-len", type=int, default=4096, help="Max sequence length for CUDA graph static cache (default: 4096)")
      return p.parse_args()
-@@ -341,6 +349,7 @@ def main():
-     logger.info("Loading model %s on %s …", args.model, args.device)
-     tts_model = FasterQwen3TTS.from_pretrained(
+ 
+ 
+@@ -344,6 +352,7 @@ def main():
          args.model,
          device=args.device,
          dtype=torch.bfloat16,
 +        max_seq_len=args.max_seq_len,
      )
+     SAMPLE_RATE = tts_model.sample_rate
+     logger.info("Model ready. Sample rate: %d Hz", SAMPLE_RATE)
