@@ -12,11 +12,11 @@ services:
       - "8020:8000"
     volumes:
       # Mount your local Qwen3-TTS model (download first, see README)
-      - ${MODEL_PATH:-./models/Qwen3-TTS}:/models/Qwen3-TTS:ro
+      - ${MODEL_PATH:-../models/Qwen3-TTS}:/models/Qwen3-TTS:ro
       # Config directory (voices.json generated on startup)
-      - ./config:/config:rw
+      - ../config:/config:rw
       # Speaker reference audio files
-      - ./config/speakers:/voices:ro
+      - ../config/speakers:/voices:ro
     command: >
       /bin/bash -c "
       python3 /config/generate_voices.py &&

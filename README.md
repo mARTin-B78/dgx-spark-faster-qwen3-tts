@@ -8,17 +8,17 @@ This repo packages the DGX Spark fixes plus four OpenAI-compatible TTS backends:
 
 | Backend | Port | Image | Voice source |
 |---|---:|---|---|
-| VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Reference audio plus transcript |
-| VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Text prompt describes the voice; no reference needed |
-| CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:v5` | Separate CustomVoice model variant |
-| Streaming | `8023` | `martinb78/qwen3-tts-streaming-dgx-spark:latest` | Same voices as `8020`, but streams WAV chunks while generating |
+| VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Reference audio plus transcript |
+| VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Text prompt describes the voice; no reference needed |
+| CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Separate CustomVoice model variant |
+| Streaming | `8023` | `martinb78/faster-qwen3-tts-dgx-spark:streaming` | Same voices as `8020`, but streams WAV chunks while generating |
 
 All four backends expose the OpenAI `/v1/audio/speech` contract and work with **OpenWebUI**, **SillyTavern**, **llama-swap**, `curl`, or any OpenAI-compatible client.
 
-Both Docker images are published and publicly available:
+One Docker image covers all four backends:
 
-- `martinb78/faster-qwen3-tts-dgx-spark:v5` - used by VoiceClone, VoiceDesign, and CustomVoice.
-- `martinb78/qwen3-tts-streaming-dgx-spark:latest` - used by the streaming service.
+- `martinb78/faster-qwen3-tts-dgx-spark:v5` (or `:latest`) — VoiceClone, VoiceDesign, and CustomVoice.
+- `martinb78/faster-qwen3-tts-dgx-spark:streaming` — streaming VoiceClone.
 
 ## What this solves
 
@@ -31,7 +31,7 @@ The DGX Spark GB10 has a unique ARM64 Grace CPU plus Blackwell GPU stack (SM 121
 
 ## Quick start: VoiceClone only
 
-Use the root `docker-compose.yml` when you only need voice cloning on port `8020`.
+Use `docker/docker-compose.simple.yml` when you only need voice cloning on port `8020`.
 
 ```bash
 docker pull martinb78/faster-qwen3-tts-dgx-spark:latest
@@ -39,11 +39,9 @@ docker pull martinb78/faster-qwen3-tts-dgx-spark:latest
 mkdir -p models
 huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-Base --local-dir ./models/Qwen3-TTS
 
-cp .env.example .env
-# Edit .env and set MODEL_PATH to your local Qwen3-TTS-12Hz-1.7B-Base directory.
-
 # Add reference audio and transcripts to config/speakers/ first.
-docker compose up -d
+cd docker
+MODEL_PATH=/path/to/Qwen3-TTS-12Hz-1.7B-Base docker compose -f docker-compose.simple.yml up -d
 ```
 
 Build the image locally instead of pulling Docker Hub:
@@ -66,7 +64,7 @@ curl http://localhost:8020/health
 
 ## Full stack: VoiceClone, VoiceDesign, CustomVoice, Streaming
 
-Use `config/docker-compose.yml` when you want all four OpenAI-compatible backends side by side:
+Use `docker/docker-compose.yml` when you want all four OpenAI-compatible backends side by side:
 
 ```text
 8020  ->  VoiceClone   (/v1/audio/speech, reference audio)
@@ -83,21 +81,21 @@ huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign --local-dir /path/
 huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice --local-dir /path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice
 ```
 
-2. Edit `config/docker-compose.yml` and adjust the volume paths for your machine:
+2. Edit `docker/docker-compose.yml` and adjust the volume paths for your machine:
 
 ```yaml
 volumes:
   - /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
   - /path/to/Qwen3-TTS-12Hz-1.7B-VoiceDesign:/models/Qwen3-TTS-VoiceDesign:ro
   - /path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice:/models/Qwen3-TTS-CustomVoice:ro
-  - /path/to/this/repo/config:/config:rw
+  - /path/to/faster-qwen3-tts/config:/config:rw
 ```
 
 3. Make sure the external Docker network exists, then start the stack:
 
 ```bash
 docker network create dgx_net 2>/dev/null || true
-cd config
+cd docker
 docker compose up -d
 ```
 
@@ -337,6 +335,13 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6 — 2026-05-30
+**Consolidate Docker files into `docker/` folder**
+
+- Moved full 4-service compose from `config/docker-compose.yml` → `docker/docker-compose.yml`
+- Moved single-service quickstart from root `docker-compose.yml` → `docker/docker-compose.simple.yml`
+- Consolidated streaming image into `martinb78/faster-qwen3-tts-dgx-spark:streaming` tag; removed separate `qwen3-tts-streaming-dgx-spark` repository
 
 ### v5 — 2026-05-30
 **Fix: voice drifts and gender changes on long paragraphs (VoiceClone)**

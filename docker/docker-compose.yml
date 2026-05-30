@@ -7,9 +7,12 @@
 #    8022 -> CustomVoice model
 #    8023 -> Low-latency streaming voice clone endpoint
 #
-#  Voice files:
-#    The voice clone and streaming services scan active voices from:
-#    /home/sparky/Projekte/TTS_Voices/active_voices
+#  Before starting: adjust the volume paths below to match your setup.
+#    - /path/to/Qwen3-TTS-12Hz-1.7B-Base       -> local Qwen3-TTS base model
+#    - /path/to/Qwen3-TTS-12Hz-1.7B-VoiceDesign -> local VoiceDesign model
+#    - /path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice -> local CustomVoice model
+#    - /path/to/faster-qwen3-tts/config          -> this repo's config directory
+#    - /path/to/active_voices                    -> directory with reference .wav files
 #
 #  Portainer note:
 #    Set HF_TOKEN in the stack environment if the models ever need Hugging Face access.
@@ -18,7 +21,7 @@
 services:
   # Standard voice cloning backend used by TTS Voice Creator and other OpenAI-compatible clients.
   faster-qwen3-tts-voiceclone:
-    image: martinb78/faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:latest
     container_name: faster-qwen3-tts-voiceclone
     restart: unless-stopped
     runtime: nvidia
@@ -28,9 +31,9 @@ services:
     ports:
       - "8020:8000"
     volumes:
-      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
-      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
-      - /home/sparky/Projekte/TTS_Voices/active_voices:/voices:ro
+      - /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
+      - /path/to/faster-qwen3-tts/config:/config:rw
+      - /path/to/active_voices:/voices:ro
     command: >
       /bin/bash -c "
       python3 /config/generate_voices.py &&
@@ -52,7 +55,7 @@ services:
 
   # VoiceDesign backend: creates speech from a descriptive voice prompt instead of a reference clip.
   faster-qwen3-tts-voicedesign:
-    image: martinb78/faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:latest
     container_name: faster-qwen3-tts-voicedesign
     restart: unless-stopped
     runtime: nvidia
@@ -62,8 +65,8 @@ services:
     ports:
       - "8021:8000"
     volumes:
-      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-VoiceDesign:/models/Qwen3-TTS-VoiceDesign:ro
-      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
+      - /path/to/Qwen3-TTS-12Hz-1.7B-VoiceDesign:/models/Qwen3-TTS-VoiceDesign:ro
+      - /path/to/faster-qwen3-tts/config:/config:rw
     command: >
       /bin/bash -c "
       python3 /config/run_voicedesign_server.py
@@ -84,7 +87,7 @@ services:
 
   # CustomVoice backend: keeps the separate CustomVoice model available on port 8022.
   faster-qwen3-tts-customvoice:
-    image: martinb78/faster-qwen3-tts-dgx-spark:v4
+    image: martinb78/faster-qwen3-tts-dgx-spark:latest
     container_name: faster-qwen3-tts-customvoice
     restart: unless-stopped
     runtime: nvidia
@@ -94,8 +97,8 @@ services:
     ports:
       - "8022:8000"
     volumes:
-      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-CustomVoice:/models/Qwen3-TTS-CustomVoice:ro
-      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
+      - /path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice:/models/Qwen3-TTS-CustomVoice:ro
+      - /path/to/faster-qwen3-tts/config:/config:rw
     command: >
       /bin/bash -c "
       python3 /config/run_customvoice_server.py
@@ -116,7 +119,7 @@ services:
 
   # Streaming voice clone backend: same active voices as 8020, but streams WAV chunks while generating.
   faster-qwen3-tts-streaming:
-    image: martinb78/qwen3-tts-streaming-dgx-spark:latest
+    image: martinb78/faster-qwen3-tts-dgx-spark:streaming
     container_name: faster-qwen3-tts-streaming
     restart: unless-stopped
     runtime: nvidia
@@ -131,9 +134,9 @@ services:
     ports:
       - "8023:8000"
     volumes:
-      - /home/sparky/LLMs/vllm/Alibaba/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
-      - /home/sparky/Docker/faster-qwen3-tts/config:/config:rw
-      - /home/sparky/Projekte/TTS_Voices/active_voices:/voices:ro
+      - /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
+      - /path/to/faster-qwen3-tts/config:/config:rw
+      - /path/to/active_voices:/voices:ro
     command: >
       /bin/bash -c "
       python3 /config/generate_voices.py &&
