@@ -11,14 +11,18 @@ This repo packages the DGX Spark fixes plus four OpenAI-compatible TTS backends:
 | VoiceClone | `8020` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Reference audio plus transcript |
 | VoiceDesign | `8021` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Text prompt describes the voice; no reference needed |
 | CustomVoice | `8022` | `martinb78/faster-qwen3-tts-dgx-spark:latest` | Separate CustomVoice model variant |
-| Streaming | `8023` | `martinb78/faster-qwen3-tts-dgx-spark:streaming` | Same voices as `8020`, but streams WAV chunks while generating |
+| Streaming | `8023` | `martinb78/faster-qwen3-tts-dgx-spark:latest-streaming` | Same voices as `8020`, but streams WAV chunks while generating |
 
 All four backends expose the OpenAI `/v1/audio/speech` contract and work with **OpenWebUI**, **SillyTavern**, **llama-swap**, `curl`, or any OpenAI-compatible client.
 
-One Docker image covers all four backends:
+One Docker image covers all four backends, with two semantic tag aliases:
 
-- `martinb78/faster-qwen3-tts-dgx-spark:v5` (or `:latest`) — VoiceClone, VoiceDesign, and CustomVoice.
-- `martinb78/faster-qwen3-tts-dgx-spark:streaming` — streaming VoiceClone.
+| Tag | Use for |
+|---|---|
+| `:latest` / `:v6` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` | Streaming VoiceClone |
+
+Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
 ## What this solves
 

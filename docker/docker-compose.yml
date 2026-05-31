@@ -119,7 +119,7 @@ services:
 
   # Streaming voice clone backend: same active voices as 8020, but streams WAV chunks while generating.
   faster-qwen3-tts-streaming:
-    image: martinb78/faster-qwen3-tts-dgx-spark:latest
+    image: martinb78/faster-qwen3-tts-dgx-spark:latest-streaming
     container_name: faster-qwen3-tts-streaming
     restart: unless-stopped
     runtime: nvidia
