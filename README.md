@@ -138,6 +138,7 @@ python config/auto_transcribe.py --api-url http://localhost:8010/v1/audio/transc
 
 `config/generate_voices.py` runs on container startup and creates `config/voices.json` from your speaker files.
 
+When you start using a new voice for the first time, the server will automatically do the heavy lifting to extract the voice's acoustic fingerprint (a "speaker embedding") and save it as a `.pt` file in the `config/speakers/` directory. Future requests will instantly load this `.pt` file instead of re-analyzing the audio, which dramatically speeds up Time To First Audio (TTFA).
 ## VoiceDesign voices
 
 VoiceDesign does not need reference audio. Define reusable voice personalities in `config/voicedesign_voices.json`:
@@ -339,6 +340,14 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.4 — 2026-06-20
+**Feature: Fully Automated Speaker Embeddings (.pt files)**
+
+- Integrated speaker embedding extraction directly into the API server (`openai_server.py`). 
+- When a new voice is requested for the first time, the server will automatically compute the speaker embedding and save it as a `.pt` file in `/config/speakers/`.
+- Future requests for the same voice automatically use the `.pt` file instead of recalculating the prompt from the `.wav` or `.mp3` reference audio.
+- This provides the massive TTFA speedup of precomputed embeddings without requiring any manual scripting or configuration.
 
 ### v6.3 — 2026-06-20
 **Feature: Precomputed Speaker Embeddings (.pt files)**
