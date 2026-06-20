@@ -1,9 +1,8 @@
 # Upstream faster-qwen3-tts repo (tracked separately)
 build/
 
-# Personal voice recordings — keep only reference transcripts
-config/speakers/*.wav
-config/speakers/*.mp3
+# Personal voice recordings & references
+config/speakers/
 
 # Private speakers — entire subtree
 config/speakers/privat/
