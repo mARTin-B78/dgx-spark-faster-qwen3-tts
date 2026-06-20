@@ -340,6 +340,14 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.3 — 2026-06-20
+**Feature: Precomputed Speaker Embeddings (.pt files)**
+
+- Implemented a way to precompute and store speaker embeddings to avoid recalculating the prompt on the server for every single generation.
+- `generate_voices.py` now automatically adds `"speaker_embeddings": ""` (or the path to a `.pt` file if it exists) to `voices.json`.
+- `openai_server.py` parses `"speaker_embeddings"` and loads the `.pt` file directly into the model's `voice_clone_prompt`, speeding up TTFA.
+- Added a `config/extract_embeddings.py` utility script to generate `.pt` files from existing `voices.json` configurations.
+
 ### v6.2 — 2026-05-30
 **Fix: voice drift on streaming port 8023 + per-voice temperature persists across restarts**
 

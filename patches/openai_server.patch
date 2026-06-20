@@ -1,12 +1,35 @@
 diff --git a/examples/openai_server.py b/examples/openai_server.py
-index 2199e14..cb44644 100644
+index 61047ea..2f95bbd 100644
 --- a/examples/openai_server.py
 +++ b/examples/openai_server.py
-@@ -185,7 +185,10 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
-                     ref_audio=voice_cfg["ref_audio"],
+@@ -169,6 +169,16 @@ def resolve_voice(voice_name: str) -> dict:
+ # ---------------------------------------------------------------------------
+ 
+ 
++def _load_voice_clone_prompt(voice_cfg: dict):
++    spk_emb_path = voice_cfg.get("speaker_embeddings") or voice_cfg.get("speaker embeddings")
++    if spk_emb_path and os.path.isfile(spk_emb_path):
++        try:
++            return torch.load(spk_emb_path, map_location="cpu", weights_only=False)
++        except Exception as e:
++            logger.error("Failed to load speaker embeddings from %s: %s", spk_emb_path, e)
++    return None
++
++
+ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, None]:
+     """
+     Run generate_voice_clone_streaming in a background thread and yield
+@@ -183,11 +193,15 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+                 for chunk, _sr, _timing in tts_model.generate_voice_clone_streaming(
+                     text=text,
+                     language=voice_cfg.get("language", "Auto"),
+-                    ref_audio=voice_cfg["ref_audio"],
++                    ref_audio=voice_cfg.get("ref_audio"),
                      ref_text=voice_cfg.get("ref_text", ""),
                      chunk_size=voice_cfg.get("chunk_size", 12),
+                     instruct=voice_cfg.get("instruct"),
 -                    non_streaming_mode=False,
++                    voice_clone_prompt=_load_voice_clone_prompt(voice_cfg),
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
 +                    top_k=voice_cfg.get("top_k", 50),
@@ -14,10 +37,15 @@ index 2199e14..cb44644 100644
                  ):
                      q.put(chunk)
          except Exception as exc:
-@@ -249,6 +252,10 @@ async def create_speech(req: SpeechRequest):
+@@ -249,9 +263,14 @@ async def create_speech(req: SpeechRequest):
+                 return tts_model.generate_voice_clone(
+                     text=req.input,
                      language=voice_cfg.get("language", "Auto"),
-                     ref_audio=voice_cfg["ref_audio"],
+-                    ref_audio=voice_cfg["ref_audio"],
++                    ref_audio=voice_cfg.get("ref_audio"),
                      ref_text=voice_cfg.get("ref_text", ""),
+                     instruct=voice_cfg.get("instruct"),
++                    voice_clone_prompt=_load_voice_clone_prompt(voice_cfg),
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
 +                    top_k=voice_cfg.get("top_k", 50),
@@ -25,19 +53,3 @@ index 2199e14..cb44644 100644
                  )
  
          audio_arrays, sr = await loop.run_in_executor(None, _generate)
-@@ -306,6 +313,7 @@ def _parse_args():
-     p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
-     p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
-     p.add_argument("--device", default="cuda", help="Torch device (default: cuda)")
-+    p.add_argument("--max-seq-len", type=int, default=4096, help="Max sequence length for CUDA graph static cache (default: 4096)")
-     return p.parse_args()
- 
- 
-@@ -344,6 +352,7 @@ def main():
-         args.model,
-         device=args.device,
-         dtype=torch.bfloat16,
-+        max_seq_len=args.max_seq_len,
-     )
-     SAMPLE_RATE = tts_model.sample_rate
-     logger.info("Model ready. Sample rate: %d Hz", SAMPLE_RATE)

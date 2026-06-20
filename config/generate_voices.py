@@ -96,6 +96,12 @@ for scan_dir in SCAN_DIRS:
                 "chunk_size": 4,
             }
 
+            pt_path = os.path.join("/config/speakers", f"{voice_id}.pt")
+            if os.path.exists(pt_path):
+                entry["speaker_embeddings"] = pt_path
+            else:
+                entry["speaker_embeddings"] = ""
+
             ref_txt = os.path.join(root, f"{base_name}.reference.txt")
             txt = os.path.join(root, f"{base_name}.txt")
             if os.path.exists(ref_txt):
