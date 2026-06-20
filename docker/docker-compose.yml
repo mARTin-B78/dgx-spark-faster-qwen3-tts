@@ -36,7 +36,7 @@ services:
       - /path/to/active_voices:/voices:ro
     command: >
       /bin/bash -c "
-      python3 /config/generate_voices.py &&
+      (while true; do python3 /config/generate_voices.py; sleep 10; done) &
       python3 /config/run_server.py
       --model /models/Qwen3-TTS
       --voices /config/voices.json
@@ -134,7 +134,7 @@ services:
       - /path/to/active_voices:/voices:ro
     command: >
       /bin/bash -c "
-      python3 /config/generate_voices.py &&
+      (while true; do python3 /config/generate_voices.py; sleep 10; done) &
       python3 /config/run_server.py
       --model /models/Qwen3-TTS
       --voices /config/voices.json

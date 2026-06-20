@@ -136,7 +136,7 @@ Or use the auto-transcription script with a running Whisper-compatible ASR servi
 python config/auto_transcribe.py --api-url http://localhost:8010/v1/audio/transcriptions
 ```
 
-`config/generate_voices.py` runs on container startup and creates `config/voices.json` from your speaker files.
+`config/generate_voices.py` runs automatically in the background, continuously watching your `speakers` directory. Whenever you add a new `.wav` and `.txt` file, it instantly updates `config/voices.json`. The API server hot-reloads the changes, meaning **you never need to restart the container when adding new voices!**
 
 When you start using a new voice for the first time, the server will automatically do the heavy lifting to extract the voice's acoustic fingerprint (a "speaker embedding") and save it as a `.pt` file in the `config/speakers/` directory. Future requests will instantly load this `.pt` file instead of re-analyzing the audio, which dramatically speeds up Time To First Audio (TTFA).
 ## VoiceDesign voices
@@ -340,6 +340,13 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.5 — 2026-06-20
+**Feature: True Zero-Downtime Voice Hot-Reloading**
+
+- The server now watches `voices.json` and hot-reloads it automatically when changes are detected.
+- Added a background loop in `docker-compose.yml` that continuously runs `generate_voices.py` every 10 seconds.
+- You can now drop new `.wav` and `.txt` files into your `speakers/` directory and they will be instantly available via the API without ever restarting the Docker container!
 
 ### v6.4 — 2026-06-20
 **Feature: Fully Automated Speaker Embeddings (.pt files)**

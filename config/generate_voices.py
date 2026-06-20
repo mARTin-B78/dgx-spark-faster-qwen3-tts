@@ -120,7 +120,10 @@ for scan_dir in SCAN_DIRS:
 
             voices[voice_id] = entry
 
-with open(output_file, "w", encoding="utf-8") as f:
-    json.dump(voices, f, indent=2, ensure_ascii=False)
+if voices != _existing:
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(voices, f, indent=2, ensure_ascii=False)
+    print(f"Success! Generated voices.json with {len(voices)} mapped voices.")
+else:
+    pass # No changes, do not update mtime
 
-print(f"Success! Generated voices.json with {len(voices)} mapped voices.")
