@@ -139,6 +139,8 @@ python config/auto_transcribe.py --api-url http://localhost:8010/v1/audio/transc
 `config/generate_voices.py` runs automatically in the background, continuously watching your `speakers` directory. Whenever you add a new `.wav` and `.txt` file, it instantly updates `config/voices.json`. The API server hot-reloads the changes, meaning **you never need to restart the container when adding new voices!**
 
 When you start using a new voice for the first time, the server will automatically do the heavy lifting to extract the voice's acoustic fingerprint (a "speaker embedding") and save it as a `.pt` file in the `config/speakers/` directory. Future requests will instantly load this `.pt` file instead of re-analyzing the audio, which dramatically speeds up Time To First Audio (TTFA).
+
+> **Note:** The generation of the `.pt` embedding is completely deterministic. Running the extraction process twice on the same reference `.wav` and `.txt` will yield the exact same fingerprint, so the resulting voice will not vary between regenerations.
 ## VoiceDesign voices
 
 VoiceDesign does not need reference audio. Define reusable voice personalities in `config/voicedesign_voices.json`:
@@ -340,6 +342,10 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.5.1 — 2026-06-21
+**Documentation Update**
+- Added documentation explicitly clarifying that `.pt` speaker embedding generation is fully deterministic and does not produce variable voice characteristics across restarts.
 
 ### v6.5 — 2026-06-20
 **Feature: True Zero-Downtime Voice Hot-Reloading**
