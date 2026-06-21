@@ -17,6 +17,7 @@ Startup:
 import asyncio
 import logging
 import sys
+import os
 import json
 from contextlib import asynccontextmanager
 
@@ -62,10 +63,34 @@ def _do_warmup():
         logger.warning("Warmup failed (non-fatal): %s", exc)
 
 
+def _precompute_all_embeddings():
+    """Background task to precompute all missing embeddings to avoid lazy-load delay."""
+    model = openai_server.tts_model
+    voices = openai_server.voices
+    if not model or not voices:
+        return
+        
+    for voice_name, voice_cfg in list(voices.items()):
+        # skip if already precomputed
+        spk_emb_path = voice_cfg.get("speaker_embeddings") or voice_cfg.get("speaker embeddings")
+        if spk_emb_path and os.path.isfile(spk_emb_path):
+            continue
+            
+        logger.info("Background precomputing embedding for %r...", voice_name)
+        # We must lock the model to prevent concurrent generation with incoming requests
+        with openai_server._model_lock:
+            try:
+                # _load_voice_clone_prompt updates voice_cfg in place and saves the .pt
+                openai_server._load_voice_clone_prompt(voice_cfg, voice_name, model)
+            except Exception as e:
+                logger.error("Failed to background precompute for %r: %s", voice_name, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _do_warmup)
+    loop.run_in_executor(None, _precompute_all_embeddings)
     yield
 
 
