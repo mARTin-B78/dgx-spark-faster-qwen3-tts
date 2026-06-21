@@ -1,6 +1,14 @@
---- /tmp/upstream_openai_server.py	2026-06-20 20:43:53.380341702 +0200
-+++ build/examples/openai_server.py	2026-06-20 21:18:30.515352046 +0200
-@@ -66,6 +66,8 @@
+--- /tmp/upstream_openai_server.py	2026-06-21 14:29:34.858114787 +0200
++++ build/examples/openai_server.py	2026-06-21 14:26:33.557536313 +0200
+@@ -36,6 +36,7 @@
+ """
+ import argparse
+ import asyncio
++import hashlib
+ import io
+ import json
+ import logging
+@@ -66,10 +67,29 @@
  
  tts_model = None
  voices: dict = {}
@@ -9,7 +17,28 @@
  default_voice: Optional[str] = None
  SAMPLE_RATE = 24000  # updated once the model loads
  _model_lock = threading.Lock()  # prevent concurrent GPU inference
-@@ -145,6 +147,21 @@
+ 
++
++def _voice_seed(voice_name: str) -> int:
++    """Return a stable per-voice seed derived from the voice name.
++
++    Used as the default when no explicit 'seed' is set in voices.json.
++    MD5 is used only for its stable byte output — not for security.
++    """
++    return int(hashlib.md5(voice_name.encode()).hexdigest(), 16) % (2 ** 31)
++
++
++def _seed_rng(seed: int) -> None:
++    """Seed PyTorch CPU and CUDA RNGs for reproducible sampling."""
++    torch.manual_seed(seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed_all(seed)
++
++
+ # ---------------------------------------------------------------------------
+ # Request / response models
+ # ---------------------------------------------------------------------------
+@@ -145,6 +165,21 @@
  
  def resolve_voice(voice_name: str) -> dict:
      """Return voice config dict or fall back to default, else raise 400."""
@@ -31,7 +60,7 @@
      if voice_name in voices:
          return voices[voice_name]
      if default_voice and default_voice in voices:
-@@ -168,7 +185,47 @@
+@@ -168,7 +203,47 @@
  # ---------------------------------------------------------------------------
  
  
@@ -80,7 +109,11 @@
      """
      Run generate_voice_clone_streaming in a background thread and yield
      raw PCM bytes for each chunk as they arrive.
-@@ -182,10 +239,15 @@
+@@ -179,13 +254,19 @@
+     def producer():
+         try:
+             with _model_lock:
++                _seed_rng(voice_cfg.get("seed", _voice_seed(voice_name)))
                  for chunk, _sr, _timing in tts_model.generate_voice_clone_streaming(
                      text=text,
                      language=voice_cfg.get("language", "Auto"),
@@ -98,7 +131,11 @@
                  ):
                      q.put(chunk)
          except Exception as exc:
-@@ -247,8 +309,14 @@
+@@ -244,11 +325,18 @@
+ 
+         def _generate():
+             with _model_lock:
++                _seed_rng(voice_cfg.get("seed", _voice_seed(req.voice)))
                  return tts_model.generate_voice_clone(
                      text=req.input,
                      language=voice_cfg.get("language", "Auto"),
@@ -114,7 +151,7 @@
                  )
  
          audio_arrays, sr = await loop.run_in_executor(None, _generate)
-@@ -259,7 +327,7 @@
+@@ -259,7 +347,7 @@
      async def audio_stream():
          if fmt == "wav":
              yield _wav_header(SAMPLE_RATE)  # stream with unknown data length
@@ -123,7 +160,7 @@
              yield raw_chunk
  
      return StreamingResponse(audio_stream(), media_type=content_type)
-@@ -306,16 +374,20 @@
+@@ -306,16 +394,20 @@
      p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
      p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
      p.add_argument("--device", default="cuda", help="Torch device (default: cuda)")
@@ -145,7 +182,7 @@
          with open(args.voices) as f:
              voices = json.load(f)
          default_voice = next(iter(voices))
-@@ -344,6 +416,7 @@
+@@ -344,6 +436,7 @@
          args.model,
          device=args.device,
          dtype=torch.bfloat16,
