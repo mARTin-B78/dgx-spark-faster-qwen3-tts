@@ -19,9 +19,10 @@ import logging
 import sys
 import os
 import json
+import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 # Point Python to the app directory inside the container
@@ -131,6 +132,48 @@ async def get_speakers():
 @openai_server.app.options('/{path:path}')
 async def options_handler(path: str):
     return JSONResponse(content={'status': 'ok'})
+
+_voices_lock = threading.Lock()
+
+
+@openai_server.app.post('/voice-seed')
+async def set_voice_seed(request: Request):
+    """Set (or clear) the seed for a voice in voices.json.
+
+    Body: {"voice": "EN_F_NatashaNeural", "seed": 7}
+    To remove a seed: {"voice": "EN_F_NatashaNeural", "seed": null}
+    """
+    data = await request.json()
+    voice_name = data.get("voice")
+    seed = data.get("seed")
+
+    if not voice_name:
+        raise HTTPException(status_code=400, detail="'voice' field is required")
+
+    voices_path = '/config/voices.json'
+    with _voices_lock:
+        try:
+            with open(voices_path, 'r', encoding='utf-8') as f:
+                voices = json.load(f)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="voices.json not found")
+
+        if voice_name not in voices:
+            raise HTTPException(status_code=404, detail=f"Voice {voice_name!r} not found")
+
+        if seed is None:
+            voices[voice_name].pop("seed", None)
+        else:
+            try:
+                voices[voice_name]["seed"] = int(seed)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="'seed' must be an integer or null")
+
+        with open(voices_path, 'w', encoding='utf-8') as f:
+            json.dump(voices, f, indent=2, ensure_ascii=False)
+
+    return JSONResponse({"ok": True, "voice": voice_name, "seed": seed})
+
 
 if __name__ == '__main__':
     openai_server.main()
