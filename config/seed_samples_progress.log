@@ -1,0 +1,106 @@
+voices : 96
+seeds  : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+output : /config/seed_samples/
+total  : ~1440 requests
+
+[1/96] EN_F_NatashaNeural
+  text: The system administrator successfully configured the customized Docker stacks and benchmar...
+    seed     1 → OK  (7.5s)
+    seed     2 → OK  (6.4s)
+    seed     3 → OK  (6.6s)
+    seed     4 → OK  (6.9s)
+    seed     5 → OK  (6.2s)
+    seed     6 → OK  (6.2s)
+    seed     7 → OK  (5.7s)
+    seed     8 → OK  (6.0s)
+    seed     9 → OK  (9.1s)
+    seed    10 → OK  (6.1s)
+    seed    11 → OK  (5.9s)
+    seed    12 → OK  (6.2s)
+    seed    13 → OK  (6.3s)
+    seed    14 → OK  (5.8s)
+    seed    15 → OK  (6.1s)
+  → 15/15 OK
+
+[2/96] EN_M_WilliamNeural
+  text: The system administrator successfully configured the customized Docker stacks and benchmar...
+    seed     1 → OK  (5.6s)
+    seed     2 → OK  (5.3s)
+    seed     3 → OK  (5.2s)
+    seed     4 → OK  (5.3s)
+    seed     5 → OK  (5.4s)
+    seed     6 → OK  (5.8s)
+    seed     7 → OK  (5.3s)
+    seed     8 → OK  (5.2s)
+    seed     9 → OK  (5.1s)
+    seed    10 → OK  (5.3s)
+    seed    11 → OK  (5.4s)
+    seed    12 → OK  (5.3s)
+    seed    13 → OK  (5.2s)
+    seed    14 → OK  (5.2s)
+    seed    15 → OK  (5.4s)
+  → 15/15 OK
+
+[3/96] DE_5_28
+  text: Die 3.500 neuen High-End Geräte für das Server-Update benötigen eine außergewöhnlich stark...
+    seed     1 → OK  (12.6s)
+    seed     2 → OK  (13.9s)
+    seed     3 → OK  (12.6s)
+    seed     4 → OK  (13.4s)
+    seed     5 → OK  (12.9s)
+    seed     6 → OK  (13.0s)
+    seed     7 → OK  (12.4s)
+    seed     8 → OK  (13.1s)
+    seed     9 → OK  (13.2s)
+    seed    10 → OK  (13.6s)
+    seed    11 → OK  (12.5s)
+    seed    12 → OK  (13.7s)
+    seed    13 → OK  (13.3s)
+    seed    14 → OK  (13.0s)
+    seed    15 → OK  (14.5s)
+  → 15/15 OK
+
+[4/96] DE_Aliya_meine_Frau
+  text: Die 3.500 neuen High-End Geräte für das Server-Update benötigen eine außergewöhnlich stark...
+    seed     1 → OK  (13.5s)
+    seed     2 → OK  (12.9s)
+    seed     3 → OK  (14.4s)
+    seed     4 → OK  (13.6s)
+    seed     5 → OK  (14.3s)
+    seed     6 → OK  (12.7s)
+    seed     7 → OK  (13.7s)
+    seed     8 → OK  (14.1s)
+    seed     9 → OK  (14.5s)
+    seed    10 → OK  (13.3s)
+    seed    11 → OK  (14.6s)
+    seed    12 → OK  (13.8s)
+    seed    13 → OK  (13.1s)
+    seed    14 → OK  (13.7s)
+    seed    15 → OK  (12.6s)
+  → 15/15 OK
+
+[5/96] DE_Anke_Harnack_U_Bahn_Hamburg_Stimme
+  text: Die 3.500 neuen High-End Geräte für das Server-Update benötigen eine außergewöhnlich stark...
+    seed     1 → OK  (15.6s)
+    seed     2 → OK  (14.4s)
+    seed     3 → OK  (14.6s)
+    seed     4 → OK  (15.8s)
+    seed     5 → OK  (14.0s)
+    seed     6 → OK  (29.5s)
+    seed     7 → OK  (46.9s)
+    seed     8 → OK  (75.1s)
+    seed     9 → FAILED: HTTPConnectionPool(host='localhost', port=8000): Read timed out.
+    seed    10 → OK  (60.6s)
+    seed    11 → OK  (14.7s)
+    seed    12 → OK  (15.1s)
+    seed    13 → OK  (15.0s)
+    seed    14 → OK  (14.8s)
+    seed    15 → OK  (14.7s)
+  → 14/15 OK
+
+[6/96] DE_Catrinja
+  text: Die 3.500 neuen High-End Geräte für das Server-Update benötigen eine außergewöhnlich stark...
+    seed     1 → OK  (12.4s)
+    seed     2 → OK  (12.7s)
+    seed     3 → OK  (13.3s)
+    seed     4 → 

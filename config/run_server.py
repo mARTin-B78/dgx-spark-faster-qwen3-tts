@@ -175,5 +175,34 @@ async def set_voice_seed(request: Request):
     return JSONResponse({"ok": True, "voice": voice_name, "seed": seed})
 
 
+_SEED_SAMPLES_DIR = '/config/seed_samples'
+
+
+@openai_server.app.get('/seed-samples/{voice_name}')
+async def list_seed_samples(voice_name: str):
+    """Return a sorted list of seed numbers for which a pre-generated WAV exists."""
+    import re as _re
+    voice_dir = os.path.join(_SEED_SAMPLES_DIR, voice_name)
+    if not os.path.isdir(voice_dir):
+        return JSONResponse({"seeds": []})
+    seeds = []
+    for fname in os.listdir(voice_dir):
+        m = _re.match(r'^seed_(\d+)\.wav$', fname)
+        if m:
+            seeds.append(int(m.group(1)))
+    seeds.sort()
+    return JSONResponse({"seeds": seeds})
+
+
+@openai_server.app.get('/seed-sample/{voice_name}/{seed}')
+async def get_seed_sample(voice_name: str, seed: int):
+    """Serve a pre-generated seed WAV file."""
+    from fastapi.responses import FileResponse
+    path = os.path.join(_SEED_SAMPLES_DIR, voice_name, f'seed_{seed:05d}.wav')
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail=f"No sample for seed {seed}")
+    return FileResponse(path, media_type='audio/wav')
+
+
 if __name__ == '__main__':
     openai_server.main()

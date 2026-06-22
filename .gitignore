@@ -21,6 +21,9 @@ config/voices.json*
 # Converted private audio (M4A → WAV, generated at runtime)
 config/converted/
 
+# Seed finder pre-generated WAV samples (batch output, not source files)
+config/seed_samples/
+
 # Editor backup files
 *.py~
 *.yml~
