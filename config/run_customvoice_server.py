@@ -252,6 +252,8 @@ def main():
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-seq-len", type=int, default=2048)
     args = parser.parse_args()
+    # Force a smaller max_seq_len to save VRAM and prevent OOM
+    args.max_seq_len = 1024
     DEFAULT_MAX_NEW_TOKENS = args.max_seq_len
     _load_model_kwargs = args
 
