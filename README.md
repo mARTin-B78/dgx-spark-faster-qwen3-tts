@@ -210,7 +210,8 @@ The streaming service on port `8023` uses the same generated `config/voices.json
 | `model` | string | `tts-1` | Kept for OpenAI compatibility |
 | `input` | string | required | Text to synthesize |
 | `voice` | string | first configured voice | Voice ID from the selected service |
-| `response_format` | string | `wav` | `wav`, `pcm`, or `mp3` |
+| `response_format` | string | `wav` | `wav`, `pcm`, `mp3`, or `zip` (for timestamps) |
+| `speed` | float | 1.0 | Scales audio tempo via ffmpeg |
 | `language` | string | voice config | Per-request override for VoiceDesign/CustomVoice |
 | `instruct` | string | voice config | Per-request style override for VoiceDesign/CustomVoice |
 | `max_new_tokens` | int | server default | Per-request generation length override |
@@ -342,6 +343,12 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.7 — 2026-06-26
+**Feature: Native Speed Control and Word-Level Timestamps**
+- **Speed Parameter:** The `speed` parameter in the OpenAI `SpeechRequest` schema is now fully supported. Audio tempo is natively adjusted using `ffmpeg` without affecting pitch, and works for both streaming and non-streaming responses.
+- **Word-Level Timestamps:** Added support for a new `response_format: "zip"`. When requested, the server automatically lazy-loads the `Qwen3-ForcedAligner-0.6B` model to generate word-level timestamps (`timer.json`) and returns it alongside the audio in a compressed zip file.
+- **Input Sanitization:** Automatically strips leading and trailing whitespace from input text to fix a bug where excessive blank space caused the tokenizer to stutter and repeat words.
 
 ### v6.6 — 2026-06-21
 **Feature: Eager Background Precomputation of Speaker Embeddings**

@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir torch torchvision torchaudio \
 
 # Install faster-qwen3-tts and server dependencies
 RUN pip install --no-cache-dir -e ".[demo]"
-RUN pip install --no-cache-dir pydub soundfile uvicorn fastapi
+RUN pip install --no-cache-dir pydub soundfile uvicorn fastapi qwen-asr
 
 EXPOSE 8000
 

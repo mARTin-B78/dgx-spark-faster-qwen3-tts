@@ -36,7 +36,24 @@ SAMPLE_RATE = 24000
 DEFAULT_MAX_NEW_TOKENS = 2048
 _model_lock = threading.Lock()
 _load_model_kwargs = None
+aligner_model = None
 
+def _get_aligner():
+    global aligner_model
+    if aligner_model is None:
+        try:
+            from qwen_asr import Qwen3ForcedAligner
+            import torch
+        except ImportError:
+            raise HTTPException(status_code=500, detail="qwen-asr is not installed. Run: pip install qwen-asr")
+        logger.info("Loading Qwen3-ForcedAligner-0.6B...")
+        aligner_model = Qwen3ForcedAligner.from_pretrained(
+            "Qwen/Qwen3-ForcedAligner-0.6B", 
+            dtype=torch.bfloat16, 
+            device_map="cuda"
+        )
+        logger.info("Aligner loaded.")
+    return aligner_model
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -90,7 +107,7 @@ class SpeechRequest(BaseModel):
     model: str = "tts-1"
     input: str
     voice: str = "vd_british_male"
-    response_format: str = "wav"
+    response_format: str = "wav"  # wav | pcm | mp3 | zip
     speed: float = 1.0
     language: Optional[str] = None
     instruct: Optional[str] = None
@@ -151,20 +168,58 @@ def _request_generation_params(req: SpeechRequest, voice_cfg: dict) -> dict:
     }
 
 
-async def _stream_chunks(params: dict):
+async def _stream_chunks(params: dict, speed: float):
     q: queue.Queue = queue.Queue()
     _DONE = object()
 
     def producer():
+        process = None
+        if speed != 1.0:
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-f", "s16le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+                "-filter:a", f"atempo={speed}",
+                "-f", "s16le", "-ar", str(SAMPLE_RATE), "-ac", "1", "pipe:1"
+            ]
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            
+            def ffmpeg_reader():
+                try:
+                    while True:
+                        out = process.stdout.read(4096)
+                        if not out:
+                            break
+                        q.put(out)
+                except Exception as e:
+                    q.put(e)
+                finally:
+                    q.put(_DONE)
+                    
+            import threading
+            threading.Thread(target=ffmpeg_reader, daemon=True).start()
+
         try:
             with _model_lock:
                 for chunk, _sr, _timing in tts_model.generate_voice_design_streaming(**params):
-                    q.put(chunk)
+                    raw = _to_pcm16(chunk)
+                    if process:
+                        process.stdin.write(raw)
+                        process.stdin.flush()
+                    else:
+                        q.put(raw)
         except Exception as exc:
             q.put(exc)
         finally:
-            q.put(_DONE)
+            if process:
+                try:
+                    process.stdin.close()
+                except Exception:
+                    pass
+            else:
+                q.put(_DONE)
 
+    import threading
     threading.Thread(target=producer, daemon=True).start()
     loop = asyncio.get_event_loop()
     while True:
@@ -173,7 +228,7 @@ async def _stream_chunks(params: dict):
             break
         if isinstance(item, Exception):
             raise item
-        yield _to_pcm16(item)
+        yield item
 
 
 # ---------------------------------------------------------------------------
@@ -189,30 +244,65 @@ async def health():
 async def create_speech(req: SpeechRequest):
     if tts_model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    if not req.input.strip():
+    req.input = req.input.strip()
+    if not req.input:
         raise HTTPException(status_code=400, detail="'input' text is empty")
 
     voice_cfg = resolve_voice(req.voice)
     params = _request_generation_params(req, voice_cfg)
     fmt = req.response_format.lower()
 
-    _CONTENT_TYPES = {"wav": "audio/wav", "pcm": "audio/pcm", "mp3": "audio/mpeg"}
+    _CONTENT_TYPES = {"wav": "audio/wav", "pcm": "audio/pcm", "mp3": "audio/mpeg", "zip": "application/zip"}
     if fmt not in _CONTENT_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt!r}")
 
-    if fmt == "mp3":
+    if fmt in ("mp3", "zip"):
         loop = asyncio.get_event_loop()
         def _gen():
             with _model_lock:
                 return tts_model.generate_voice_design(**params)
         audio_arrays, sr = await loop.run_in_executor(None, _gen)
         audio = audio_arrays[0] if audio_arrays else np.zeros(1, dtype=np.float32)
+        
+        if req.speed != 1.0:
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-f", "f32le", "-ar", str(sr), "-ac", "1", "-i", "pipe:0",
+                "-filter:a", f"atempo={req.speed}",
+                "-f", "f32le", "-ar", str(sr), "-ac", "1", "pipe:1"
+            ]
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            process.stdin.write(audio.tobytes())
+            process.stdin.close()
+            out = process.stdout.read()
+            audio = np.frombuffer(out, dtype=np.float32)
+
+        if fmt == "zip":
+            def _align():
+                aligner = _get_aligner()
+                res = aligner.align(audio=(audio, sr), text=req.input, language=voice_cfg.get("language", "Auto"))
+                import dataclasses
+                return [dataclasses.asdict(x) for x in res]
+            
+            align_data = await loop.run_in_executor(None, _align)
+            
+            import zipfile
+            import io
+            mp3_bytes = _to_mp3_bytes(audio, sr)
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("audio.mp3", mp3_bytes)
+                zf.writestr("timer.json", json.dumps(align_data, ensure_ascii=False))
+                
+            return Response(content=zip_buf.getvalue(), media_type=_CONTENT_TYPES[fmt])
+
         return Response(content=_to_mp3_bytes(audio, sr), media_type="audio/mpeg")
 
     async def audio_stream():
         if fmt == "wav":
             yield _wav_header(SAMPLE_RATE)
-        async for raw in _stream_chunks(params):
+        async for raw in _stream_chunks(params, req.speed):
             yield raw
 
     return StreamingResponse(audio_stream(), media_type=_CONTENT_TYPES[fmt])
