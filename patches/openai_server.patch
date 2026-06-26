@@ -1,6 +1,8 @@
---- examples/openai_server.py	2026-06-26 11:11:13.425594803 +0200
-+++ /tmp/my_openai_server.py	2026-06-26 11:11:13.417691441 +0200
-@@ -72,6 +72,24 @@
+diff --git a/examples/openai_server.py b/examples/openai_server.py
+index 7845b2f..d10065f 100644
+--- a/examples/openai_server.py
++++ b/examples/openai_server.py
+@@ -72,6 +72,24 @@ last_voices_mtime: float = 0.0
  default_voice: Optional[str] = None
  SAMPLE_RATE = 24000  # updated once the model loads
  _model_lock = threading.Lock()  # prevent concurrent GPU inference
@@ -25,7 +27,7 @@
  
  
  def _voice_seed(voice_name: str) -> int:
-@@ -99,8 +117,8 @@
+@@ -99,8 +117,8 @@ class SpeechRequest(BaseModel):
      model: str = "tts-1"
      input: str
      voice: str = "alloy"
@@ -36,7 +38,7 @@
  
  
  # ---------------------------------------------------------------------------
-@@ -243,7 +261,7 @@
+@@ -243,7 +261,7 @@ def _load_voice_clone_prompt(voice_cfg: dict, voice_name: str, tts_model):
          return None
  
  
@@ -45,7 +47,7 @@
      """
      Run generate_voice_clone_streaming in a background thread and yield
      raw PCM bytes for each chunk as they arrive.
-@@ -252,6 +270,31 @@
+@@ -252,6 +270,31 @@ async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str) -> AsyncGe
      _DONE = object()
  
      def producer():
@@ -77,7 +79,7 @@
          try:
              with _model_lock:
                  _seed_rng(voice_cfg.get("seed", _voice_seed(voice_name)))
-@@ -268,11 +311,22 @@
+@@ -268,11 +311,22 @@ async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str) -> AsyncGe
                      top_k=voice_cfg.get("top_k", 50),
                      top_p=voice_cfg.get("top_p", 0.9),
                  ):
@@ -102,7 +104,7 @@
  
      thread = threading.Thread(target=producer, daemon=True)
      thread.start()
-@@ -284,7 +338,7 @@
+@@ -284,7 +338,7 @@ async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str) -> AsyncGe
              break
          if isinstance(item, Exception):
              raise item
@@ -111,7 +113,7 @@
  
  
  # ---------------------------------------------------------------------------
-@@ -301,7 +355,8 @@
+@@ -301,7 +355,8 @@ async def health():
  async def create_speech(req: SpeechRequest):
      if tts_model is None:
          raise HTTPException(status_code=503, detail="Model not loaded")
@@ -121,7 +123,7 @@
          raise HTTPException(status_code=400, detail="'input' text is empty")
  
      voice_cfg = resolve_voice(req.voice)
-@@ -311,16 +366,17 @@
+@@ -311,16 +366,17 @@ async def create_speech(req: SpeechRequest):
          "wav": "audio/wav",
          "pcm": "audio/pcm",
          "mp3": "audio/mpeg",
@@ -142,7 +144,7 @@
          loop = asyncio.get_event_loop()
  
          def _generate():
-@@ -341,13 +397,46 @@
+@@ -341,13 +397,46 @@ async def create_speech(req: SpeechRequest):
  
          audio_arrays, sr = await loop.run_in_executor(None, _generate)
          audio = audio_arrays[0] if audio_arrays else np.zeros(1, dtype=np.float32)
