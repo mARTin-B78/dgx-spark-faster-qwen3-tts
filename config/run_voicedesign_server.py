@@ -8,6 +8,7 @@ No ref_audio needed — the instruct text fully describes the voice.
 """
 import json
 import logging
+import os
 import queue
 import threading
 import asyncio
@@ -32,6 +33,8 @@ app = FastAPI()
 tts_model: FasterQwen3TTS = None
 voices: dict = {}
 default_voice: str = None
+voices_file_path: str = None
+last_voices_mtime: float = 0.0
 SAMPLE_RATE = 24000
 DEFAULT_MAX_NEW_TOKENS = 2048
 _model_lock = threading.Lock()
@@ -143,14 +146,52 @@ def _to_mp3_bytes(audio: np.ndarray, sr: int) -> bytes:
     return buf.getvalue()
 
 
-def resolve_voice(name: str) -> dict:
+def _reload_voices_if_changed():
+    """Pick up voices added to the registry since startup.
+
+    The registry used to be read once in main(), so any voice designed while
+    the server was up stayed invisible until a manual restart — and an unknown
+    voice silently became a bundled preset (see resolve_voice). The voice-clone
+    server already hot-reloads its registry; this brings VoiceDesign in line.
+    """
+    global voices, last_voices_mtime
+    if not voices_file_path or not os.path.exists(voices_file_path):
+        return
+    try:
+        mtime = os.path.getmtime(voices_file_path)
+        if mtime > last_voices_mtime:
+            with open(voices_file_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict) and loaded:
+                voices = loaded
+                last_voices_mtime = mtime
+                _build_voice_list()
+                logger.info("Hot-reloaded %d voices from %s", len(voices), voices_file_path)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to hot-reload voices: %s", exc)
+
+
+def resolve_voice(name: str, has_request_instruct: bool = False) -> dict:
+    _reload_voices_if_changed()
     cfg = voices.get(name)
     if cfg:
         return cfg
-    if default_voice and default_voice in voices:
-        logger.warning("Voice %r not found, falling back to %r", name, default_voice)
-        return voices[default_voice]
-    raise HTTPException(status_code=404, detail=f"Voice {name!r} not found")
+    # Falling back to another voice is meaningless here: for VoiceDesign the
+    # instruct IS the voice, so substituting the first registered preset does
+    # not degrade the result, it silently returns a completely different
+    # character — confirmed live as the cause of a German male character being
+    # read by 'vd_british_male', including apparent gender flips between takes.
+    if has_request_instruct:
+        # The caller described the voice inline, so nothing is missing.
+        logger.info("Voice %r not registered; using the instruct supplied with the request", name)
+        return {}
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            f"Voice {name!r} is not registered and the request carried no 'instruct' "
+            f"to describe it. Known voices: {sorted(voices)}"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,14 +199,32 @@ def resolve_voice(name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _request_generation_params(req: SpeechRequest, voice_cfg: dict) -> dict:
-    instruct = req.instruct if req.instruct is not None else voice_cfg.get("instruct", "")
+    # A registered voice's instruct is its IDENTITY; an instruct sent with the
+    # request is a per-line direction (emotion, delivery). Replacing the former
+    # with the latter — the previous behaviour — meant every line that carried
+    # any emotion discarded the character's voice entirely and re-rolled a new
+    # one from a few words of direction, which is why a character's voice
+    # drifted between lines. Combine them, identity first.
+    base_instruct = str(voice_cfg.get("instruct", "") or "").strip()
+    line_instruct = str(req.instruct or "").strip()
+    if base_instruct and line_instruct and line_instruct != base_instruct:
+        instruct = f"{base_instruct} {line_instruct}"
+    else:
+        instruct = line_instruct or base_instruct
+
     language = req.language or voice_cfg.get("language", "English")
-    return {
+    params = {
         "text": req.input,
         "instruct": instruct,
         "language": language,
         "max_new_tokens": req.max_new_tokens or int(voice_cfg.get("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)),
     }
+    # Per-voice sampling overrides — the only way to make a designed voice
+    # reproducible, since generate_voice_design() accepts no seed.
+    for key in ("temperature", "top_p", "top_k"):
+        if voice_cfg.get(key) is not None:
+            params[key] = float(voice_cfg[key]) if key != "top_k" else int(voice_cfg[key])
+    return params
 
 
 async def _stream_chunks(params: dict, speed: float):
@@ -248,7 +307,7 @@ async def create_speech(req: SpeechRequest):
     if not req.input:
         raise HTTPException(status_code=400, detail="'input' text is empty")
 
-    voice_cfg = resolve_voice(req.voice)
+    voice_cfg = resolve_voice(req.voice, has_request_instruct=bool((req.instruct or "").strip()))
     params = _request_generation_params(req, voice_cfg)
     fmt = req.response_format.lower()
 
@@ -320,18 +379,22 @@ def _build_voice_list():
 
 @app.get("/v1/models")
 async def list_models():
+    _reload_voices_if_changed()
     return _models_response
 
 @app.get("/v1/audio/voices")
 async def list_audio_voices():
+    _reload_voices_if_changed()
     return _models_response
 
 @app.get("/v1/audio/models")
 async def list_audio_models():
+    _reload_voices_if_changed()
     return _models_response
 
 @app.get("/speakers")
 async def get_speakers():
+    _reload_voices_if_changed()
     return list(voices.keys())
 
 @app.options("/{path:path}")
@@ -345,6 +408,7 @@ async def options_handler(path: str):
 
 def main():
     global voices, default_voice, SAMPLE_RATE, DEFAULT_MAX_NEW_TOKENS, _load_model_kwargs
+    global voices_file_path, last_voices_mtime
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="/models/Qwen3-TTS-VoiceDesign")
@@ -357,10 +421,16 @@ def main():
     DEFAULT_MAX_NEW_TOKENS = args.max_seq_len
     _load_model_kwargs = args
 
+    voices_file_path = args.voices
     with open(args.voices) as f:
         voices = json.load(f)
+    try:
+        last_voices_mtime = os.path.getmtime(args.voices)
+    except OSError:
+        last_voices_mtime = 0.0
     default_voice = next(iter(voices), None)
     _build_voice_list()
+    logger.info("Loaded %d voices from %s", len(voices), args.voices)
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

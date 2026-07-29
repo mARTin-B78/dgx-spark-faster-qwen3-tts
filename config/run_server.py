@@ -76,7 +76,11 @@ def _precompute_all_embeddings():
         spk_emb_path = voice_cfg.get("speaker_embeddings") or voice_cfg.get("speaker embeddings")
         if spk_emb_path and os.path.isfile(spk_emb_path):
             continue
-            
+
+        if not voice_cfg.get("ref_text"):
+            logger.warning("Skipping embedding precompute for %r: no ref_text (add a transcript to voices.json)", voice_name)
+            continue
+
         logger.info("Background precomputing embedding for %r...", voice_name)
         # We must lock the model to prevent concurrent generation with incoming requests
         with openai_server._model_lock:
