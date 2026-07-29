@@ -186,6 +186,39 @@ CustomVoice uses the model's built-in speaker names. Define the speaker IDs you 
 
 Then call the CustomVoice service on port `8022`.
 
+## Consistent characters for long-form narration
+
+For an audiobook a character must sound identical across thousands of requests while still carrying emotion. Those two goals live in different services, so use each for what it is good at.
+
+**VoiceDesign has no seed.** `generate_voice_design()` accepts none, so a designed voice's identity is re-sampled from its prompt on every call. Low `temperature`/`top_p` narrows the spread but does not remove it. Treat VoiceDesign as a casting tool, not a narration engine.
+
+**VoiceClone is deterministic.** Every request seeds the RNG — from `seed` in `voices.json`, or a stable hash of the voice name when none is set — and the `.pt` prompt is a frozen recording of one specific reference. The same text yields the same audio across restarts.
+
+The workflow:
+
+1. **Cast** the character at port `8021` until a take sounds right. Generate the same line several times; the identity you hear wandering is what step 3 eliminates.
+2. **Freeze** the take you liked: save ~10–20 s of clean audio as the character's reference WAV with an exact transcript as `ref_text`. The character is now a VoiceClone voice.
+3. **Bake** the `.pt`. `extract_embeddings.py` writes a full ICL prompt (reference codec tokens plus transcript), which both pins the identity and puts you in the mode where instructions are followed reliably.
+4. **Pin the seed.** Audition with `find_best_seed.py` and `/seed-samples/{voice}`, then lock the winner with `POST /voice-seed`.
+5. **Narrate** at port `8020`, passing per-line `instruct` for emotion.
+
+Once a character's reference audio is chosen, treat it as immutable. Re-recording it invalidates the `.pt` (see v6.8) and shifts the identity, which means re-auditioning the seed and re-rendering everything already produced.
+
+### Directing a line
+
+`instruct` on a request is a *direction*, not a description. It is appended to the voice's own `instruct`, so keep the character in the voice and only the delivery in the request:
+
+```bash
+curl http://localhost:8020/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"input":"You should not have come here.",
+       "voice":"DE_M_Zerwas",
+       "instruct":"quietly, through gritted teeth"}' \
+  --output line_0417.wav
+```
+
+Write `"whispering, barely audible"`, not `"a gravelly old man, whispering"` — the second re-describes the character and invites drift. Cast on a calm, level reference: a reference read with strong emotion bakes that emotion into the identity and fights every later direction. Test each character's most extreme line early; if a direction breaks the identity, the reference is too short or too expressive.
+
 ## Streaming backend
 
 The streaming service on port `8023` uses the same generated `config/voices.json` and active VoiceClone reference voices as port `8020`, but returns WAV chunks while generation is still running. Use it when time-to-first-audio matters more than waiting for the complete WAV response.
@@ -213,7 +246,7 @@ The streaming service on port `8023` uses the same generated `config/voices.json
 | `response_format` | string | `wav` | `wav`, `pcm`, `mp3`, or `zip` (for timestamps) |
 | `speed` | float | 1.0 | Scales audio tempo via ffmpeg |
 | `language` | string | voice config | Per-request override for VoiceDesign/CustomVoice |
-| `instruct` | string | voice config | Per-request style override for VoiceDesign/CustomVoice |
+| `instruct` | string | voice config | Per-line delivery direction. Appended to the voice's own `instruct`, never replacing it. Supported by all three services |
 | `max_new_tokens` | int | server default | Per-request generation length override |
 
 WAV and PCM are streamed as audio is generated. MP3 is encoded after generation and returned as a complete response.
@@ -343,6 +376,13 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.9 — 2026-07-29
+**Feature: Per-Line Emotional Direction on Cloned Voices**
+- **Request-Level `instruct` for VoiceClone:** The clone server previously read `instruct` only from `voices.json`, so a character could have one fixed delivery for an entire book. `SpeechRequest` now accepts `instruct`, applied to both the streaming and non-streaming paths.
+- **Identity-First Merging:** A per-request `instruct` is appended to the voice's own description rather than replacing it, so directing one line's emotion cannot re-roll the character. Matches the behaviour added to the VoiceDesign server in v6.8.
+- **Why It Works Here:** Qwen3-TTS follows instructions reliably only in ICL mode, not with x-vector-only cloning. The `.pt` prompts written by `extract_embeddings.py` are full ICL prompts, so cloned voices qualify.
+- **Documentation:** New "Consistent characters for long-form narration" section covering the cast-in-VoiceDesign, narrate-from-VoiceClone workflow for audiobooks.
 
 ### v6.8 — 2026-07-29
 **Fix: Stale Speaker Embeddings and Unregistered Voice Design Voices**

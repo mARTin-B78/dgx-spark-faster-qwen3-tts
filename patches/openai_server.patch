@@ -1,5 +1,5 @@
 diff --git a/examples/openai_server.py b/examples/openai_server.py
-index 2199e14..d10065f 100644
+index 2199e14..a65f81e 100644
 --- a/examples/openai_server.py
 +++ b/examples/openai_server.py
 @@ -36,6 +36,7 @@ API usage:
@@ -10,7 +10,7 @@ index 2199e14..d10065f 100644
  import io
  import json
  import logging
-@@ -66,9 +67,46 @@ app = FastAPI(title="faster-qwen3-tts OpenAI-compatible API")
+@@ -66,9 +67,66 @@ app = FastAPI(title="faster-qwen3-tts OpenAI-compatible API")
  
  tts_model = None
  voices: dict = {}
@@ -54,10 +54,30 @@ index 2199e14..d10065f 100644
 +    if torch.cuda.is_available():
 +        torch.cuda.manual_seed_all(seed)
 +
++
++def _merge_instruct(voice_cfg: dict, req_instruct: Optional[str]) -> Optional[str]:
++    """Combine a voice's identity instruct with a per-request delivery direction.
++
++    A voice's instruct in voices.json describes WHO is speaking; an instruct
++    sent with the request describes HOW this one line is delivered. Replacing
++    the former with the latter would re-roll the character from a few words of
++    direction, so combine them, identity first — the same rule the VoiceDesign
++    server applies.
++
++    Instructions are only followed reliably in ICL mode. The .pt prompts written
++    by extract_embeddings.py are full ICL prompts (ref codec tokens + ref_text),
++    not x-vector-only, so this path qualifies.
++    """
++    base = str(voice_cfg.get("instruct") or "").strip()
++    line = str(req_instruct or "").strip()
++    if base and line and line != base:
++        return f"{base} {line}"
++    return line or base or None
++
  
  # ---------------------------------------------------------------------------
  # Request / response models
-@@ -79,8 +117,8 @@ class SpeechRequest(BaseModel):
+@@ -79,8 +137,9 @@ class SpeechRequest(BaseModel):
      model: str = "tts-1"
      input: str
      voice: str = "alloy"
@@ -65,10 +85,11 @@ index 2199e14..d10065f 100644
 -    speed: float = 1.0           # accepted but not yet applied
 +    response_format: str = "wav"  # wav | pcm | mp3 | zip
 +    speed: float = 1.0           # scales audio tempo
++    instruct: Optional[str] = None  # per-line delivery direction, see _merge_instruct
  
  
  # ---------------------------------------------------------------------------
-@@ -145,6 +183,21 @@ def _to_mp3_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
+@@ -145,6 +204,21 @@ def _to_mp3_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
  
  def resolve_voice(voice_name: str) -> dict:
      """Return voice config dict or fall back to default, else raise 400."""
@@ -90,7 +111,7 @@ index 2199e14..d10065f 100644
      if voice_name in voices:
          return voices[voice_name]
      if default_voice and default_voice in voices:
-@@ -168,7 +221,47 @@ def resolve_voice(voice_name: str) -> dict:
+@@ -168,7 +242,47 @@ def resolve_voice(voice_name: str) -> dict:
  # ---------------------------------------------------------------------------
  
  
@@ -135,11 +156,11 @@ index 2199e14..d10065f 100644
 +        return None
 +
 +
-+async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str, speed: float) -> AsyncGenerator[bytes, None]:
++async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str, speed: float, instruct: Optional[str] = None) -> AsyncGenerator[bytes, None]:
      """
      Run generate_voice_clone_streaming in a background thread and yield
      raw PCM bytes for each chunk as they arrive.
-@@ -177,21 +270,63 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+@@ -177,21 +291,63 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
      _DONE = object()
  
      def producer():
@@ -179,7 +200,7 @@ index 2199e14..d10065f 100644
                      ref_text=voice_cfg.get("ref_text", ""),
                      chunk_size=voice_cfg.get("chunk_size", 12),
 -                    non_streaming_mode=False,
-+                    instruct=voice_cfg.get("instruct"),
++                    instruct=_merge_instruct(voice_cfg, instruct),
 +                    voice_clone_prompt=_load_voice_clone_prompt(voice_cfg, voice_name, tts_model),
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
@@ -207,7 +228,7 @@ index 2199e14..d10065f 100644
  
      thread = threading.Thread(target=producer, daemon=True)
      thread.start()
-@@ -203,7 +338,7 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+@@ -203,7 +359,7 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
              break
          if isinstance(item, Exception):
              raise item
@@ -216,7 +237,7 @@ index 2199e14..d10065f 100644
  
  
  # ---------------------------------------------------------------------------
-@@ -220,7 +355,8 @@ async def health():
+@@ -220,7 +376,8 @@ async def health():
  async def create_speech(req: SpeechRequest):
      if tts_model is None:
          raise HTTPException(status_code=503, detail="Model not loaded")
@@ -226,7 +247,7 @@ index 2199e14..d10065f 100644
          raise HTTPException(status_code=400, detail="'input' text is empty")
  
      voice_cfg = resolve_voice(req.voice)
-@@ -230,36 +366,77 @@ async def create_speech(req: SpeechRequest):
+@@ -230,36 +387,77 @@ async def create_speech(req: SpeechRequest):
          "wav": "audio/wav",
          "pcm": "audio/pcm",
          "mp3": "audio/mpeg",
@@ -255,7 +276,7 @@ index 2199e14..d10065f 100644
 -                    ref_audio=voice_cfg["ref_audio"],
 +                    ref_audio=voice_cfg.get("ref_audio"),
                      ref_text=voice_cfg.get("ref_text", ""),
-+                    instruct=voice_cfg.get("instruct"),
++                    instruct=_merge_instruct(voice_cfg, req.instruct),
 +                    voice_clone_prompt=_load_voice_clone_prompt(voice_cfg, req.voice, tts_model),
 +                    non_streaming_mode=True,
 +                    temperature=voice_cfg.get("temperature", 0.8),
@@ -305,11 +326,11 @@ index 2199e14..d10065f 100644
          if fmt == "wav":
              yield _wav_header(SAMPLE_RATE)  # stream with unknown data length
 -        async for raw_chunk in _stream_chunks(voice_cfg, req.input):
-+        async for raw_chunk in _stream_chunks(voice_cfg, req.input, req.voice, req.speed):
++        async for raw_chunk in _stream_chunks(voice_cfg, req.input, req.voice, req.speed, req.instruct):
              yield raw_chunk
  
      return StreamingResponse(audio_stream(), media_type=content_type)
-@@ -306,16 +483,20 @@ def _parse_args():
+@@ -306,16 +504,20 @@ def _parse_args():
      p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
      p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
      p.add_argument("--device", default="cuda", help="Torch device (default: cuda)")
@@ -331,7 +352,7 @@ index 2199e14..d10065f 100644
          with open(args.voices) as f:
              voices = json.load(f)
          default_voice = next(iter(voices))
-@@ -344,6 +525,7 @@ def main():
+@@ -344,6 +546,7 @@ def main():
          args.model,
          device=args.device,
          dtype=torch.bfloat16,
