@@ -166,6 +166,10 @@ else:
 # which hot-reloads this file.
 
 VOICEDESIGN_OUTPUT = "/config/voicedesign_voices.json"
+# The generated registry carries the user's own design prompts, so it is not
+# tracked in git. The bundled vd_* presets are, in this seed file — it is the
+# only copy of them a fresh clone gets.
+VOICEDESIGN_PRESETS = "/config/voicedesign_voices.presets.json"
 VOICEDESIGN_NOTE_PREFIX = "Voice Design:"
 
 _LANG_BY_FLAG = {
@@ -175,15 +179,27 @@ _LANG_BY_FLAG = {
 }
 
 
-def _build_voicedesign_registry():
+def _load_json_dict(path):
     try:
-        with open(VOICEDESIGN_OUTPUT, encoding="utf-8") as f:
-            existing = json.load(f)
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
     except (OSError, json.JSONDecodeError):
-        existing = {}
+        return {}
+    return data if isinstance(data, dict) else {}
 
-    # Keep the bundled vd_* presets; rebuild every app-managed entry.
+
+def _build_voicedesign_registry():
+    existing = _load_json_dict(VOICEDESIGN_OUTPUT)
+
+    # Keep the bundled vd_* presets; rebuild every app-managed entry. On a
+    # fresh checkout the registry does not exist yet, so seed the presets from
+    # the tracked file — without them the server has no built-in voices at all.
     registry = {k: v for k, v in existing.items() if k.startswith("vd_")}
+    if not registry:
+        registry = {
+            k: v for k, v in _load_json_dict(VOICEDESIGN_PRESETS).items()
+            if k.startswith("vd_")
+        }
     added = 0
 
     for scan_dir in SCAN_DIRS:

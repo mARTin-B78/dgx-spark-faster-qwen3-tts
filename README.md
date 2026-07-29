@@ -344,6 +344,14 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.8 — 2026-07-29
+**Fix: Stale Speaker Embeddings and Unregistered Voice Design Voices**
+- **Stale `.pt` Embeddings:** A speaker embedding is a cache baked from one specific pairing of reference audio and transcript. Re-recording a voice replaced those sources but left the old `.pt` in place, so the server kept cloning from an embedding whose audio tokens no longer matched its transcript — generation ignored the requested text and emitted unrelated filler. `generate_voices.py` now treats an embedding older than its reference audio or transcript as absent and regenerates it.
+- **Designed Voices Were Never Registered:** Voices created with VoiceDesign were not written into `voicedesign_voices.json` at all, so the server knew only its 8 bundled presets and silently substituted one of them for every custom voice. The registry is now generated from the voice library's `.meta.json` files, and an unknown voice returns 404 instead of a different character.
+- **Instruct Merging:** A per-request `instruct` is now appended to the voice's own description rather than replacing it, so directing a line's emotion no longer discards the character's identity and re-rolls a new voice.
+- **VoiceDesign Hot-Reload:** The VoiceDesign server picks up registry changes while running, matching the voice-clone server. Per-voice `temperature`/`top_p`/`top_k` set in the registry are honoured and preserved across regeneration.
+- **Registry No Longer Tracked:** `config/voicedesign_voices.json` is generated from your own voice library and carries your design prompts, so it is now gitignored. The bundled presets live in the tracked `config/voicedesign_voices.presets.json`, which seeds the registry on a fresh checkout.
+
 ### v6.7 — 2026-06-26
 **Feature: Native Speed Control and Word-Level Timestamps**
 - **Speed Parameter:** The `speed` parameter in the OpenAI `SpeechRequest` schema is now fully supported. Audio tempo is natively adjusted using `ffmpeg` without affecting pitch, and works for both streaming and non-streaming responses.

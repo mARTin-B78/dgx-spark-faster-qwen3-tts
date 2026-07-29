@@ -18,6 +18,12 @@ config/faster-qwen3-tts.code-workspace
 config/voices.json
 config/voices.json*
 
+# Generated at container startup from the voice library's designed voices.
+# Contains the user's own character design prompts, so it stays local; the
+# bundled vd_* presets live in voicedesign_voices.presets.json, which IS
+# tracked and seeds this file on a fresh checkout.
+config/voicedesign_voices.json
+
 # Converted private audio (M4A → WAV, generated at runtime)
 config/converted/
 
