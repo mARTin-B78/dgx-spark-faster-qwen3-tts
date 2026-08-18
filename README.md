@@ -377,6 +377,12 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.10 — 2026-08-18
+**Fix: Long Text No Longer Truncated Mid-Sentence**
+- **Root Cause:** `/v1/audio/speech` sent the entire request text as one generate call, capped at `--max-seq-len` codec tokens. Text long enough to need more audio than that cap allowed got cut off wherever generation happened to be — mid-sentence, mid-word — with no error surfaced to the client.
+- **Automatic Segmentation:** Long input is now split into paragraph-sized segments (falling back to sentence boundaries for a paragraph that alone exceeds the safe budget) and generated back-to-back, stitched into one continuous stream or file. Applies to both the streaming (wav/pcm) and non-streaming (mp3/zip) paths.
+- **Why This Beats Raising `--max-seq-len`:** The CUDA graph static cache sized by `--max-seq-len` is reserved VRAM for the life of the container, whether or not any request needs it. Segmenting text keeps that cache small — `--max-seq-len` can be set to fit your VRAM budget instead of your longest expected input — while still supporting arbitrarily long text.
+
 ### v6.9 — 2026-07-29
 **Feature: Per-Line Emotional Direction on Cloned Voices**
 - **Request-Level `instruct` for VoiceClone:** The clone server previously read `instruct` only from `voices.json`, so a character could have one fixed delivery for an entire book. `SpeechRequest` now accepts `instruct`, applied to both the streaming and non-streaming paths.
