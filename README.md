@@ -242,7 +242,7 @@ The streaming service on port `8023` uses the same generated `config/voices.json
 |---|---|---|---|
 | `model` | string | `tts-1` | Kept for OpenAI compatibility |
 | `input` | string | required | Text to synthesize |
-| `voice` | string | first configured voice | Voice ID from the selected service |
+| `voice` | string | first configured voice | Voice ID from the selected service. VoiceClone also accepts a language alias (`FR`, `FR_F`, `fr_m`) that resolves to the first matching `<LANG>_<M/F>_...` voice; a bare language code prefers a female voice |
 | `response_format` | string | `wav` | `wav`, `pcm`, `mp3`, or `zip` (for timestamps) |
 | `speed` | float | 1.0 | Scales audio tempo via ffmpeg |
 | `language` | string | voice config | Per-request override for VoiceDesign/CustomVoice |
@@ -377,6 +377,10 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.11 — 2026-09-21
+**Feature: Language Aliases for VoiceClone Voices**
+- OpenAI-compatible clients that send a route alias such as `FR`, `FR_F` or `FR_M` in the `voice` field now get a configured speaker in that language (case-insensitive) instead of silently falling back to the default English voice. Unknown aliases still return the default voice or a 400 as before.
 
 ### v6.10.1 — 2026-09-21
 **Fix: Fresh `docker build` Crashes on Model Load**
