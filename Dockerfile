@@ -35,7 +35,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN pip install --upgrade pip
 
 # Install ARM64 CUDA 13 wheels for PyTorch stack
-RUN pip install --no-cache-dir torch torchvision torchaudio \
+# Pinned to the versions validated on GB10 (CUDA graphs on SM121).
+RUN pip install --no-cache-dir torch==2.12.1 torchvision==0.27.1 torchaudio==2.11.0 \
     --index-url https://download.pytorch.org/whl/cu130
 
 # Install faster-qwen3-tts and server dependencies

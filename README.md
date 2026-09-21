@@ -19,8 +19,8 @@ One Docker image covers all four backends, with two semantic tag aliases:
 
 | Tag | Use for |
 |---|---|
-| `:latest` / `:v6` | VoiceClone, VoiceDesign, CustomVoice |
-| `:latest-streaming` / `:v6-streaming` | Streaming VoiceClone |
+| `:latest` / `:v6` / `:v6.11` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` / `:v6.11-streaming` | Streaming VoiceClone |
 
 Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
@@ -381,6 +381,7 @@ The first request after container startup can be slower because CUDA graph captu
 ### v6.11 — 2026-09-21
 **Feature: Language Aliases for VoiceClone Voices**
 - OpenAI-compatible clients that send a route alias such as `FR`, `FR_F` or `FR_M` in the `voice` field now get a configured speaker in that language (case-insensitive) instead of silently falling back to the default English voice. Unknown aliases still return the default voice or a 400 as before.
+- **Reproducible builds:** the PyTorch stack is pinned to the versions validated on GB10 (`torch==2.12.1`, `torchvision==0.27.1`, `torchaudio==2.11.0`) so a rebuild no longer picks up an untested PyTorch release.
 
 ### v6.10.1 — 2026-09-21
 **Fix: Fresh `docker build` Crashes on Model Load**
