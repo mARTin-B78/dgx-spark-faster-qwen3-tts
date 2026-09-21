@@ -367,6 +367,7 @@ The first request after container startup can be slower because CUDA graph captu
 | Very high TTFA | CUDA graph capture failed or fallback path is active | Check logs, reduce `--max-seq-len`, then restart |
 | MP3 output error | MP3 dependencies are missing or ffmpeg is unavailable | Use `wav`/`pcm` or rebuild the image with MP3 support |
 | OpenWebUI has no voices | Client cannot read the voice list | Confirm `/v1/models` and `/v1/audio/voices` are reachable from OpenWebUI |
+| Self-built image crashes in `Qwen3TTSModel.from_pretrained` at startup | Image built from an old Dockerfile that cloned upstream `main` (v0.4.0+, Transformers 5), mixed with `qwen-asr`'s Transformers 4 pin | `git pull` this repo and rebuild with `docker build --no-cache -t faster-qwen3-tts-dgx-spark:latest .` |
 
 ## Hardware requirements
 
@@ -376,6 +377,11 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.10.1 — 2026-09-21
+**Fix: Fresh `docker build` Crashes on Model Load**
+- **Root Cause:** The Dockerfile cloned upstream `faster-qwen3-tts` from `main`. Upstream v0.4.0 (2026-08-25) moved to Transformers 5 (`qwen-tts-hf`), but `qwen-asr` pins `transformers==4.57.6` and downgraded it in the next build step, so `Qwen3TTSModel.from_pretrained` failed on startup. Images built before that date were unaffected.
+- **Fix:** Upstream is now pinned to commit `7cdef7e` (v0.2.6, the version in the released images), with `qwen-tts==0.1.1` and `qwen-asr==0.0.6`. Override with `--build-arg FASTER_QWEN3_TTS_REF=<sha|tag|branch>`.
 
 ### v6.10 — 2026-08-18
 **Fix: Long Text No Longer Truncated Mid-Sentence**
