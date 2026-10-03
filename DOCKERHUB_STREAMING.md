@@ -20,7 +20,7 @@ docker run -d \
   --name qwen3-tts-streaming \
   -p 8023:8000 \
   -e NVIDIA_VISIBLE_DEVICES=all \
-  -v /path/to/Qwen3-TTS-12Hz-0.6B-Base:/models/Qwen3-TTS:ro \
+  -v /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro \
   -v /path/to/faster-qwen3-tts/config:/config:rw \
   -v /path/to/active_voices:/voices:ro \
   martinb78/faster-qwen3-tts-dgx-spark:streaming \
@@ -34,11 +34,13 @@ docker run -d \
   "
 ```
 
-Download the 0.6B Base weights before starting the container:
+Download the 1.7B Base weights before starting the container:
 
 ```bash
-hf download Qwen/Qwen3-TTS-12Hz-0.6B-Base --local-dir /path/to/Qwen3-TTS-12Hz-0.6B-Base
+hf download Qwen/Qwen3-TTS-12Hz-1.7B-Base --local-dir /path/to/Qwen3-TTS-12Hz-1.7B-Base
 ```
+
+Streaming must use the same model size as the one voices.json was built for (1.7B-Base), otherwise requests fail with a 1024 vs 2048 tensor size mismatch.
 
 For an existing stack, change only the streaming service's model bind mount.
 `--model /models/Qwen3-TTS` loads that directory; `QWEN_TTS_MODEL` does not
@@ -107,7 +109,7 @@ Works with **OpenWebUI**, **SillyTavern**, **llama-swap**, and any OpenAI-compat
 - NVIDIA DGX Spark GB10 or another ARM64 system with CUDA 13
 - CUDA driver 580+
 - Docker + NVIDIA Container Toolkit
-- [Qwen3-TTS-12Hz-0.6B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) weights downloaded locally
+- [Qwen3-TTS-12Hz-1.7B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) weights downloaded locally
 
 ---
 

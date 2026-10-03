@@ -19,8 +19,8 @@ One Docker image covers all four backends, with two semantic tag aliases:
 
 | Tag | Use for |
 |---|---|
-| `:latest` / `:v6` / `:v6.13` | VoiceClone, VoiceDesign, CustomVoice |
-| `:latest-streaming` / `:v6-streaming` / `:v6.13-streaming` | Streaming VoiceClone |
+| `:latest` / `:v6` / `:v6.13.1` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` / `:v6.13.1-streaming` | Streaming VoiceClone |
 
 Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
@@ -354,7 +354,7 @@ The first request after container startup can be slower because CUDA graph captu
 
 - The 1.7B Qwen3-TTS models use about 6 GB of GPU memory each in bfloat16.
 - The forum playbook shows the four API containers running together on DGX Spark with low visible memory pressure, but exact usage depends on model size, sequence length, and warmup state.
-- Use the 0.6B Qwen3-TTS variants if you want a lighter multi-service setup.
+- The 0.6B Qwen3-TTS variants are lighter but need their own `voices.json` regenerated with that model's embeddings. Do not use them for the streaming/clone containers, which share the default `voices.json` (1.7B-Base).
 - `--max-seq-len 2048` handles most sentence-style TTS requests. Long-form narration may need `4096`, with more memory required.
 - Pin services to different GPUs with `NVIDIA_VISIBLE_DEVICES=0`, `NVIDIA_VISIBLE_DEVICES=1`, and so on if your system has more than one GPU.
 
@@ -377,6 +377,11 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.13.1 — 2026-10-04
+
+- **Fix:** Streaming must use the same model size as the one voices.json was built for (1.7B-Base), otherwise requests fail with a 1024 vs 2048 tensor size mismatch. Streaming compose examples now default to the 1.7B-Base model.
+- **Fix:** Out-of-range `chunk_size` values are clamped to 2–24 (e.g. -5/0/1 -> 2, 1000 -> 24) and still return 200; only non-integers return 422. Covered by an offline check of the patched `SpeechRequest` + `_clamp_chunk_size`.
 
 ### v6.13 — 2026-10-04
 **Feature: Per-Request `chunk_size` for Streaming**

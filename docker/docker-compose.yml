@@ -129,7 +129,7 @@ services:
     ports:
       - "8023:8000"
     volumes:
-      - /path/to/Qwen3-TTS-12Hz-0.6B-Base:/models/Qwen3-TTS:ro
+      - /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro
       - /path/to/faster-qwen3-tts/config:/config:rw
       - /path/to/active_voices:/voices:ro
     command: >
