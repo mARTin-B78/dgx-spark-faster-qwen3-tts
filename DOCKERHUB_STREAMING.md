@@ -20,7 +20,7 @@ docker run -d \
   --name qwen3-tts-streaming \
   -p 8023:8000 \
   -e NVIDIA_VISIBLE_DEVICES=all \
-  -v /path/to/Qwen3-TTS-12Hz-1.7B-Base:/models/Qwen3-TTS:ro \
+  -v /path/to/Qwen3-TTS-12Hz-0.6B-Base:/models/Qwen3-TTS:ro \
   -v /path/to/faster-qwen3-tts/config:/config:rw \
   -v /path/to/active_voices:/voices:ro \
   martinb78/faster-qwen3-tts-dgx-spark:streaming \
@@ -30,9 +30,19 @@ docker run -d \
       --model /models/Qwen3-TTS
       --voices /config/voices.json
       --port 8000
-      --max-seq-len 4096
+      --max-seq-len 2048
   "
 ```
+
+Download the 0.6B Base weights before starting the container:
+
+```bash
+hf download Qwen/Qwen3-TTS-12Hz-0.6B-Base --local-dir /path/to/Qwen3-TTS-12Hz-0.6B-Base
+```
+
+For an existing stack, change only the streaming service's model bind mount.
+`--model /models/Qwen3-TTS` loads that directory; `QWEN_TTS_MODEL` does not
+override this explicit argument. Use Base for reference-audio voice cloning.
 
 Check it's running:
 
@@ -97,7 +107,7 @@ Works with **OpenWebUI**, **SillyTavern**, **llama-swap**, and any OpenAI-compat
 - NVIDIA DGX Spark GB10 or another ARM64 system with CUDA 13
 - CUDA driver 580+
 - Docker + NVIDIA Container Toolkit
-- [Qwen3-TTS-12Hz-1.7B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) weights downloaded locally
+- [Qwen3-TTS-12Hz-0.6B-Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) weights downloaded locally
 
 ---
 

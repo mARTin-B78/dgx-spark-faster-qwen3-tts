@@ -1,5 +1,5 @@
 diff --git a/examples/openai_server.py b/examples/openai_server.py
-index 2199e14..ca5eaf9 100644
+index 2199e14..3f3a4e6 100644
 --- a/examples/openai_server.py
 +++ b/examples/openai_server.py
 @@ -36,11 +36,13 @@ API usage:
@@ -84,7 +84,7 @@ index 2199e14..ca5eaf9 100644
  
  # ---------------------------------------------------------------------------
  # Request / response models
-@@ -79,8 +139,60 @@ class SpeechRequest(BaseModel):
+@@ -79,8 +139,68 @@ class SpeechRequest(BaseModel):
      model: str = "tts-1"
      input: str
      voice: str = "alloy"
@@ -93,6 +93,14 @@ index 2199e14..ca5eaf9 100644
 +    response_format: str = "wav"  # wav | pcm | mp3 | zip
 +    speed: float = 1.0           # scales audio tempo
 +    instruct: Optional[str] = None  # per-line delivery direction, see _merge_instruct
++    # Streaming only: codec frames per streamed chunk (12 = 1 s). Small values
++    # cut time-to-first-audio but cost throughput; clamped to 2..24.
++    # None keeps the voice's voices.json chunk_size.
++    chunk_size: Optional[int] = None
++    # Streaming only: hold back the first N ms of audio before sending, so a
++    # client that plays on arrival rides out a slower-than-realtime start
++    # (shared GPU) instead of stuttering. 0/None = send immediately. Max 10 s.
++    prebuffer_ms: Optional[int] = None
 +
 +
 +# ---------------------------------------------------------------------------
@@ -147,7 +155,7 @@ index 2199e14..ca5eaf9 100644
  
  
  # ---------------------------------------------------------------------------
-@@ -144,9 +256,39 @@ def _to_mp3_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
+@@ -144,9 +264,39 @@ def _to_mp3_bytes(pcm: np.ndarray, sample_rate: int) -> bytes:
  
  
  def resolve_voice(voice_name: str) -> dict:
@@ -188,7 +196,7 @@ index 2199e14..ca5eaf9 100644
      if default_voice and default_voice in voices:
          logger.warning(
              "Voice %r not configured; falling back to default voice %r",
-@@ -168,7 +310,47 @@ def resolve_voice(voice_name: str) -> dict:
+@@ -168,42 +318,214 @@ def resolve_voice(voice_name: str) -> dict:
  # ---------------------------------------------------------------------------
  
  
@@ -233,12 +241,81 @@ index 2199e14..ca5eaf9 100644
 +        return None
 +
 +
-+async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str, speed: float, instruct: Optional[str] = None) -> AsyncGenerator[bytes, None]:
++def _clamp_chunk_size(n: int) -> int:
++    return max(2, min(24, n))
++
++
++# Fixed-window codec decode. Upstream re-decodes the whole reference prompt plus
++# every generated frame for the first chunks (~250 frames on long references)
++# and decodes eagerly (hundreds of small kernel launches). The 12 Hz codec
++# decoder is causal, so decoding the last (context + chunk) frames and keeping
++# the tail is exact; with the reference codes as left context the window is
++# always full, so one CUDA graph per window size covers every chunk.
++_DECODE_CONTEXT = 25  # frames, same as upstream chunked_decode / streaming
++_GRAPH_DECODE = os.environ.get("TTS_GRAPH_DECODE", "1") != "0"
++_decoder_graphs: dict = {}  # window frames -> (graph, static_in, static_out)
++
++
++def _decode_window(decoder, window: torch.Tensor) -> torch.Tensor:
++    """Decode [frames, Q] codes to a waveform tensor, graph-replayed when possible."""
++    codes = window.T.unsqueeze(0)
++    entry = _decoder_graphs.get(codes.shape[-1])
++    if entry is None:
++        static_in = codes.clone()
++        side = torch.cuda.Stream()
++        side.wait_stream(torch.cuda.current_stream())
++        with torch.cuda.stream(side):
++            for _ in range(2):
++                decoder(static_in)
++        torch.cuda.current_stream().wait_stream(side)
++        graph = torch.cuda.CUDAGraph()
++        with torch.cuda.graph(graph, capture_error_mode="thread_local"):
++            static_out = decoder(static_in)
++        entry = _decoder_graphs[codes.shape[-1]] = (graph, static_in, static_out)
++    graph, static_in, static_out = entry
++    static_in.copy_(codes)
++    graph.replay()
++    return static_out
++
++
++@torch.inference_mode()
++def _voice_clone_stream(chunk_size: int, **kwargs):
++    """generate_voice_clone_streaming with fixed-window (graphed) codec decode.
++
++    Yields float32 numpy chunks. Token generation is upstream's
++    fast_generate_streaming unchanged.
++    """
++    from faster_qwen3_tts.streaming import fast_generate_streaming
++
++    gen_keys = ("temperature", "top_k", "top_p")
++    gen = {k: kwargs.pop(k) for k in gen_keys if k in kwargs}
++    m, talker, config, tie, tam, tth, tpe, ref_codes = tts_model._prepare_generation(**kwargs)
++    decoder = m.speech_tokenizer.model.decoder
++    upsample = decoder.total_upsample
++    window = _DECODE_CONTEXT + chunk_size
++    hist = ref_codes.to(tie.device)[-window:] if ref_codes is not None else None
++    for codes, _timing in fast_generate_streaming(
++        talker=talker, talker_input_embeds=tie, attention_mask=tam,
++        trailing_text_hiddens=tth, tts_pad_embed=tpe, config=config,
++        predictor_graph=tts_model.predictor_graph, talker_graph=tts_model.talker_graph,
++        chunk_size=chunk_size, **gen,
++    ):
++        hist = codes if hist is None else torch.cat([hist, codes])[-window:]
++        if hist.shape[0] == window:
++            wav = _decode_window(decoder, hist)
++        else:  # x-vector voice, first chunks: short eager decode
++            wav = decoder(hist.T.unsqueeze(0))
++        yield wav[..., -codes.shape[0] * upsample:].flatten().float().cpu().numpy()
++
++
++async def _stream_chunks(voice_cfg: dict, text: str, voice_name: str, speed: float, instruct: Optional[str] = None, chunk_size: Optional[int] = None, prebuffer_ms: Optional[int] = None) -> AsyncGenerator[bytes, None]:
      """
      Run generate_voice_clone_streaming in a background thread and yield
      raw PCM bytes for each chunk as they arrive.
-@@ -177,21 +359,65 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
+     """
+     q: queue.Queue = queue.Queue()
      _DONE = object()
++    cancelled = threading.Event()
  
      def producer():
 +        process = None
@@ -280,19 +357,27 @@ index 2199e14..ca5eaf9 100644
 +                _seed_rng(voice_cfg.get("seed", _voice_seed(voice_name)))
 +                segments = _split_text_for_generation(text, _max_chars_per_segment())
 +                for seg in segments:
-+                    for chunk, _sr, _timing in tts_model.generate_voice_clone_streaming(
++                    kwargs = dict(
 +                        text=seg,
 +                        language=voice_cfg.get("language", "Auto"),
 +                        ref_audio=voice_cfg.get("ref_audio"),
 +                        ref_text=voice_cfg.get("ref_text", ""),
-+                        chunk_size=voice_cfg.get("chunk_size", 12),
 +                        instruct=_merge_instruct(voice_cfg, instruct),
 +                        voice_clone_prompt=_load_voice_clone_prompt(voice_cfg, voice_name, tts_model),
 +                        non_streaming_mode=True,
 +                        temperature=voice_cfg.get("temperature", 0.8),
 +                        top_k=voice_cfg.get("top_k", 50),
 +                        top_p=voice_cfg.get("top_p", 0.9),
-+                    ):
++                    )
++                    cs = _clamp_chunk_size(chunk_size) if chunk_size is not None else voice_cfg.get("chunk_size", 12)
++                    if _GRAPH_DECODE:
++                        chunks = _voice_clone_stream(cs, **kwargs)
++                    else:
++                        chunks = (c for c, _sr, _t in tts_model.generate_voice_clone_streaming(chunk_size=cs, **kwargs))
++                    for chunk in chunks:
++                        if cancelled.is_set():  # client gone: free the GPU for the next request
++                            chunks.close()
++                            return
 +                        raw = _to_pcm16(chunk)
 +                        if process:
 +                            process.stdin.write(raw)
@@ -313,16 +398,38 @@ index 2199e14..ca5eaf9 100644
  
      thread = threading.Thread(target=producer, daemon=True)
      thread.start()
-@@ -203,7 +429,7 @@ async def _stream_chunks(voice_cfg: dict, text: str) -> AsyncGenerator[bytes, No
-             break
-         if isinstance(item, Exception):
-             raise item
+ 
+     loop = asyncio.get_event_loop()
+-    while True:
+-        item = await loop.run_in_executor(None, q.get)
+-        if item is _DONE:
+-            break
+-        if isinstance(item, Exception):
+-            raise item
 -        yield _to_pcm16(item)
-+        yield item
++    hold = max(0, min(10000, prebuffer_ms or 0)) * SAMPLE_RATE * 2 // 1000  # PCM16 bytes
++    pending = b""
++    try:
++        while True:
++            item = await loop.run_in_executor(None, q.get)
++            if item is _DONE:
++                break
++            if isinstance(item, Exception):
++                raise item
++            if hold:
++                pending += item
++                if len(pending) < hold:
++                    continue
++                item, pending, hold = pending, b"", 0
++            yield item
++        if pending:
++            yield pending
++    finally:
++        cancelled.set()
  
  
  # ---------------------------------------------------------------------------
-@@ -220,7 +446,8 @@ async def health():
+@@ -220,7 +542,8 @@ async def health():
  async def create_speech(req: SpeechRequest):
      if tts_model is None:
          raise HTTPException(status_code=503, detail="Model not loaded")
@@ -332,7 +439,7 @@ index 2199e14..ca5eaf9 100644
          raise HTTPException(status_code=400, detail="'input' text is empty")
  
      voice_cfg = resolve_voice(req.voice)
-@@ -230,36 +457,84 @@ async def create_speech(req: SpeechRequest):
+@@ -230,36 +553,84 @@ async def create_speech(req: SpeechRequest):
          "wav": "audio/wav",
          "pcm": "audio/pcm",
          "mp3": "audio/mpeg",
@@ -426,11 +533,11 @@ index 2199e14..ca5eaf9 100644
          if fmt == "wav":
              yield _wav_header(SAMPLE_RATE)  # stream with unknown data length
 -        async for raw_chunk in _stream_chunks(voice_cfg, req.input):
-+        async for raw_chunk in _stream_chunks(voice_cfg, req.input, req.voice, req.speed, req.instruct):
++        async for raw_chunk in _stream_chunks(voice_cfg, req.input, req.voice, req.speed, req.instruct, req.chunk_size, req.prebuffer_ms):
              yield raw_chunk
  
      return StreamingResponse(audio_stream(), media_type=content_type)
-@@ -306,16 +581,21 @@ def _parse_args():
+@@ -306,16 +677,21 @@ def _parse_args():
      p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
      p.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
      p.add_argument("--device", default="cuda", help="Torch device (default: cuda)")
@@ -453,7 +560,7 @@ index 2199e14..ca5eaf9 100644
          with open(args.voices) as f:
              voices = json.load(f)
          default_voice = next(iter(voices))
-@@ -344,6 +624,7 @@ def main():
+@@ -344,6 +720,7 @@ def main():
          args.model,
          device=args.device,
          dtype=torch.bfloat16,

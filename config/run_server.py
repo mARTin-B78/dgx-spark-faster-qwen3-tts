@@ -50,14 +50,19 @@ def _do_warmup():
 
     logger.info("Warming up CUDA graphs (first request will be fast)...")
     try:
-        for _ in model.generate_voice_clone_streaming(
+        kwargs = dict(
             text="Warmup.",
             language=voice_cfg.get("language", "Auto"),
             ref_audio=ref_audio,
             ref_text=voice_cfg.get("ref_text", ""),
-            chunk_size=12,
             non_streaming_mode=True,
-        ):
+        )
+        # Patched server: also captures the codec decode graph for chunk 12.
+        if getattr(openai_server, "_GRAPH_DECODE", False):
+            stream = openai_server._voice_clone_stream(12, **kwargs)
+        else:
+            stream = model.generate_voice_clone_streaming(chunk_size=12, **kwargs)
+        for _ in stream:
             pass
         logger.info("CUDA warmup complete — server ready.")
     except Exception as exc:

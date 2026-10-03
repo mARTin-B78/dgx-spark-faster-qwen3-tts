@@ -19,8 +19,8 @@ One Docker image covers all four backends, with two semantic tag aliases:
 
 | Tag | Use for |
 |---|---|
-| `:latest` / `:v6` / `:v6.12` | VoiceClone, VoiceDesign, CustomVoice |
-| `:latest-streaming` / `:v6-streaming` / `:v6.12-streaming` | Streaming VoiceClone |
+| `:latest` / `:v6` / `:v6.13` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` / `:v6.13-streaming` | Streaming VoiceClone |
 
 Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
@@ -377,6 +377,27 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.13 — 2026-10-04
+**Feature: Per-Request `chunk_size` for Streaming**
+- `/v1/audio/speech` accepts an optional integer `chunk_size` (codec frames per streamed chunk, 12 = 1 s), clamped to 2–24. It applies to the streaming wav/pcm path only; omitted keeps the voice's `voices.json` value (default unchanged).
+- Use case: a voice bot can request a small chunk for the first sentence of a reply (faster first audio) and the efficient default for the rest. Measured on GB10 (2.6 s sentence, shared GPU): chunk 4 → first audio 0.60 s, RTF 1.61, underrun 1.28 s; chunk 12 → 1.24 s, RTF 1.25, underrun 0.16 s.
+
+**Perf: Fixed-Window CUDA-Graph Codec Decode for Streaming**
+- **Root Cause:** upstream re-decoded the whole reference prompt (~210 frames) plus all generated frames for the first chunks of every request (~215 ms per decode, 3× per request), and decoded eagerly afterwards. The streaming path now always decodes the last 25 + `chunk_size` frames (reference codes are the left context at the start) through one captured CUDA graph per window size (~18–25 ms per chunk). Token generation is unchanged; the 25-frame context is the same one upstream uses after its first chunks, no extra boundary clicks were measured.
+- Measured on GB10 (voice `DE_Jarvis_2`, median of 3, no other GPU load): 8.4 s sentence chunk 12 → first audio 1.14 → 1.01 s, RTF 1.00 → 0.95, underrun 0.23 → 0.00 s; chunk 4 → first audio 0.58 → 0.44 s, RTF 1.15 → 0.99, underrun 1.02 → 0.00 s. With the LLM generating at the same time, chunk 4 underrun 5.86 → 3.90 s (the GPU is time-sliced, RTF stays 1.5–1.9).
+- Small chunks are now cheap: `chunk_size: 4` gives ~0.4 s first audio without stutter when the GPU is not shared.
+- Kill switch: env `TTS_GRAPH_DECODE=0` restores the upstream decode path.
+
+**Feature: `prebuffer_ms` for Streaming**
+- `/v1/audio/speech` accepts optional `prebuffer_ms` (0–10000): the server holds back that much audio before sending, so a client that plays on arrival rides out a slow start on a shared GPU. Default 0 (unchanged). Measured with LLM load, 2.6 s sentence, chunk 4: `prebuffer_ms: 1000` → underrun 1.08 → 0.00 s, first audio 1.45 → 2.44 s.
+
+**Fix: Client Disconnect Stops Generation**
+- When a streaming client hangs up (e.g. voice-bot barge-in), generation stops after the current chunk and frees the GPU lock. Previously the whole text was still generated and blocked the next request. Measured: next request's first audio 0.74 s after hanging up on a ~25 s text.
+- `config/run_server.py` warm-up now also captures the chunk-12 decode graph.
+
+**Recommended: `--max-seq-len 2048` for Streaming**
+- Run the streaming container with `--max-seq-len 2048` (saves ~7 ms per decode step versus larger values). All compose files in `docker/` already use it.
 
 ### v6.12 — 2026-10-03
 **Fix: Streaming (8023) Slower Than Realtime**
