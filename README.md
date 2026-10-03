@@ -378,6 +378,12 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### Unreleased
+**Fix: Streaming (8023) Slower Than Realtime**
+- **Root Cause:** `generate_voices.py` wrote `chunk_size: 4` (~0.33 s audio) into every voice. Each streamed chunk runs a codec decode over 25 frames of left context plus a GPU sync, so a 4-frame chunk spent most of its time re-decoding context. Measured on GB10: RTF 1.13–1.49 with 1.0–1.9 s of playback underruns per 8.4 s sentence.
+- **Fix:** Default `chunk_size` is now 12 (1 s audio per chunk; upstream default). Same sentence: RTF 0.96–1.01, underruns 0.14–0.29 s; time-to-first-audio rises from ~0.6–0.9 s to ~1.1 s. `voices.json` picks this up the next time `generate_voices.py` runs (container start).
+- **Note:** Remaining speed is bound by the model step time (~61–73 ms/step) while other GPU workloads (LLM serving) share the GB10; the upstream figure without contention is ~44 ms/step (RTF ~0.53). Clients should keep a ~1 s jitter buffer.
+
 ### v6.11 — 2026-09-21
 **Feature: Language Aliases for VoiceClone Voices**
 - OpenAI-compatible clients that send a route alias such as `FR`, `FR_F` or `FR_M` in the `voice` field now get a configured speaker in that language (case-insensitive) instead of silently falling back to the default English voice. Unknown aliases still return the default voice or a 400 as before.

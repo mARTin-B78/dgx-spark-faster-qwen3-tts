@@ -93,7 +93,10 @@ for scan_dir in SCAN_DIRS:
             entry = {
                 "ref_audio": audio_path,
                 "language": detect_language(base_name),
-                "chunk_size": 4,
+                # 12 codec frames = 1 s of audio per streamed chunk. Each chunk
+                # re-decodes 25 frames of left context in the codec, so 4 made
+                # streaming ~30% slower than realtime on GB10 (measured RTF 1.3 vs 1.0).
+                "chunk_size": 12,
             }
 
             ref_txt = os.path.join(root, f"{base_name}.reference.txt")
