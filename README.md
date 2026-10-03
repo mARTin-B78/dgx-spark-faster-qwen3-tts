@@ -19,8 +19,8 @@ One Docker image covers all four backends, with two semantic tag aliases:
 
 | Tag | Use for |
 |---|---|
-| `:latest` / `:v6` / `:v6.11` | VoiceClone, VoiceDesign, CustomVoice |
-| `:latest-streaming` / `:v6-streaming` / `:v6.11-streaming` | Streaming VoiceClone |
+| `:latest` / `:v6` / `:v6.12` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` / `:v6.12-streaming` | Streaming VoiceClone |
 
 Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
@@ -378,7 +378,7 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
-### Unreleased
+### v6.12 — 2026-10-03
 **Fix: Streaming (8023) Slower Than Realtime**
 - **Root Cause:** `generate_voices.py` wrote `chunk_size: 4` (~0.33 s audio) into every voice. Each streamed chunk runs a codec decode over 25 frames of left context plus a GPU sync, so a 4-frame chunk spent most of its time re-decoding context. Measured on GB10: RTF 1.13–1.49 with 1.0–1.9 s of playback underruns per 8.4 s sentence.
 - **Fix:** Default `chunk_size` is now 12 (1 s audio per chunk; upstream default). Same sentence: RTF 0.96–1.01, underruns 0.14–0.29 s; time-to-first-audio rises from ~0.6–0.9 s to ~1.1 s. `voices.json` picks this up the next time `generate_voices.py` runs (container start).
