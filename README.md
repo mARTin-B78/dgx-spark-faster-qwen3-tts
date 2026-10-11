@@ -381,6 +381,13 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.15.1 — 2026-10-12
+
+- **Docs:** German sample files (10 voices, 0.6B-Base streaming, same text) in `samples/german sample files/` with an `index.html` that has an audio player per voice (open locally or via GitHub Pages) and a link table, added for the German-pronunciation question in the forum.
+- **Docs:** image tag table now lists `v6.15.0`; the `v6.15.0` images and the `:v6`/`:latest` aliases are on Docker Hub.
+- **Image:** unchanged (`:v6.15.0`), no rebuild needed.
+- **Rollback:** `git checkout v6.15.0` (documentation only).
+
 ### v6.15.0 — 2026-10-11
 
 - **Perf (opt-in):** `TTS_COMPILE_PREDICTOR=1` compiles the 15-step code-predictor loop with `torch.compile` (Inductor/Triton) before CUDA-graph capture. Profiling showed the predictor needs ~5350 kernels per frame (about 54 % of the decode time); fusing them cuts its replay from ~23 ms to ~17.5 ms. Measured through the API on GB10 with the 0.6B-Base streaming server (same voice and text, other TTS containers stopped): 1.6–1.7x -> 1.8x real-time on long text, first audio ~670 ms -> ~550 ms. Listening comparison of 5 voices: no audible difference. Costs about one extra minute at startup. Default is off (unchanged behaviour).
