@@ -356,6 +356,7 @@ The first request after container startup can be slower because CUDA graph captu
 - The forum playbook shows the four API containers running together on DGX Spark with low visible memory pressure, but exact usage depends on model size, sequence length, and warmup state.
 - The 0.6B Qwen3-TTS variants are lighter, but their speaker embeddings (1024-dim) are incompatible with the 1.7B ones (2048-dim). Set `EMBED_TAG=0.6b` (and `EMBED_TAG=1.7b` on the 1.7B services) and mount `/voices` read-write: each voice then gets `<name>.<tag>.pt` beside its WAV and both sizes can share one `voices.json` (see `docker/docker-compose.portainer-0.6b.yml`).
 - Measured on GB10 with other GPU services running (streaming PCM, first request excluded): 0.6B-Base TTFA ~570 ms, RTF 0.53–0.60 (1.7–1.9× real-time); 1.7B-Base TTFA ~820 ms, RTF 0.78–0.84 (1.2–1.3× real-time). The first request after a start is much slower while graphs/embeddings are built.
+- Optional: `TTS_COMPILE_PREDICTOR=1` (image v6.15.0+) fuses the code predictor for ~10 % more throughput; see the v6.15.0 changelog entry.
 - Throughput is not limited by memory pressure or GPU clocks (re-measured with the other large GPU model stopped: identical). The streaming process runs at ~100 % of one CPU core at ~32 W GPU power, so per-step launch/Python overhead is the suspected limit (not profiled yet). Lowering latency in practice: use the 0.6B stream with `response_format: "pcm"` and send one or two sentences per request.
 - `--max-seq-len 2048` handles most sentence-style TTS requests. Long-form narration may need `4096`, with more memory required.
 - Pin services to different GPUs with `NVIDIA_VISIBLE_DEVICES=0`, `NVIDIA_VISIBLE_DEVICES=1`, and so on if your system has more than one GPU.
@@ -379,6 +380,13 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.15.0 — 2026-10-11
+
+- **Perf (opt-in):** `TTS_COMPILE_PREDICTOR=1` compiles the 15-step code-predictor loop with `torch.compile` (Inductor/Triton) before CUDA-graph capture. Profiling showed the predictor needs ~5350 kernels per frame (about 54 % of the decode time); fusing them cuts its replay from ~23 ms to ~17.5 ms. Measured through the API on GB10 with the 0.6B-Base streaming server (same voice and text, other TTS containers stopped): 1.6–1.7x -> 1.8x real-time on long text, first audio ~670 ms -> ~550 ms. Listening comparison of 5 voices: no audible difference. Costs about one extra minute at startup. Default is off (unchanged behaviour).
+- **Image:** rebuilt as `v6.15.0` / `v6.15.0-streaming` (adds `patches/predictor_compile.patch`). Built locally; not yet pushed to Docker Hub, so the tag table above still lists `v6.13.1` until it is.
+- **Investigation notes:** memory pressure/swap, GPU clocks, CPU core type and `chunk_size` do not limit throughput; `float16` fails (inf/NaN logits, device-side assert); flash-attn is irrelevant for single-token decode. F5-TTS, EmoKnob and Breeze-TTS-2 were benchmarked against Qwen3-TTS: slower than real-time (Breeze 0.5x, EmoKnob 0.1x) or without streaming/German (F5 ~5x) and not usable quality-wise in our test.
+- **Rollback:** unset `TTS_COMPILE_PREDICTOR` (or use the `:v6.13.1` image).
 
 ### v6.14.1 — 2026-10-11
 
