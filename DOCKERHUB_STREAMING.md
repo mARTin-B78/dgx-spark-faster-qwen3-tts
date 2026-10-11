@@ -41,6 +41,7 @@ hf download Qwen/Qwen3-TTS-12Hz-1.7B-Base --local-dir /path/to/Qwen3-TTS-12Hz-1.
 ```
 
 Streaming must use the same model size as the one voices.json was built for (1.7B-Base), otherwise requests fail with a 1024 vs 2048 tensor size mismatch.
+To run the 0.6B-Base model for lower latency next to a 1.7B service on the same `voices.json`, set `EMBED_TAG=0.6b` on the streaming service (and `EMBED_TAG=1.7b` on the 1.7B one) and mount `/voices` read-write; each model then keeps its own `<name>.<tag>.pt` beside the WAV.
 
 For an existing stack, change only the streaming service's model bind mount.
 `--model /models/Qwen3-TTS` loads that directory; `QWEN_TTS_MODEL` does not

@@ -354,7 +354,9 @@ The first request after container startup can be slower because CUDA graph captu
 
 - The 1.7B Qwen3-TTS models use about 6 GB of GPU memory each in bfloat16.
 - The forum playbook shows the four API containers running together on DGX Spark with low visible memory pressure, but exact usage depends on model size, sequence length, and warmup state.
-- The 0.6B Qwen3-TTS variants are lighter but need their own `voices.json` regenerated with that model's embeddings. Do not use them for the streaming/clone containers, which share the default `voices.json` (1.7B-Base).
+- The 0.6B Qwen3-TTS variants are lighter, but their speaker embeddings (1024-dim) are incompatible with the 1.7B ones (2048-dim). Set `EMBED_TAG=0.6b` (and `EMBED_TAG=1.7b` on the 1.7B services) and mount `/voices` read-write: each voice then gets `<name>.<tag>.pt` beside its WAV and both sizes can share one `voices.json` (see `docker/docker-compose.portainer-0.6b.yml`).
+- Measured on GB10 with other GPU services running (streaming PCM, first request excluded): 0.6B-Base TTFA ~570 ms, RTF 0.53–0.60 (1.7–1.9× real-time); 1.7B-Base TTFA ~820 ms, RTF 0.78–0.84 (1.2–1.3× real-time). The first request after a start is much slower while graphs/embeddings are built.
+- Throughput is not limited by memory pressure or GPU clocks (re-measured with the other large GPU model stopped: identical). The streaming process runs at ~100 % of one CPU core at ~32 W GPU power, so per-step launch/Python overhead is the suspected limit (not profiled yet). Lowering latency in practice: use the 0.6B stream with `response_format: "pcm"` and send one or two sentences per request.
 - `--max-seq-len 2048` handles most sentence-style TTS requests. Long-form narration may need `4096`, with more memory required.
 - Pin services to different GPUs with `NVIDIA_VISIBLE_DEVICES=0`, `NVIDIA_VISIBLE_DEVICES=1`, and so on if your system has more than one GPU.
 
@@ -377,6 +379,13 @@ The first request after container startup can be slower because CUDA graph captu
 - Local Qwen3-TTS model weights from Hugging Face.
 
 ## Changelog
+
+### v6.14.1 — 2026-10-11
+
+- **Docs:** measured GB10 benchmark numbers for 0.6B vs 1.7B, the finding that memory pressure and GPU clocks are not the bottleneck, and the corrected 0.6B guidance (`EMBED_TAG`) in "Performance and memory notes".
+- **Deploy note:** Portainer re-creates services from its stored stack file, so a `docker compose up` from the CLI is overwritten. Update the stack in the Portainer editor instead.
+- **Image:** unchanged (`:v6.13.1`), no rebuild needed.
+- **Rollback:** `git checkout v6.14.0` (documentation only).
 
 ### v6.14.0 — 2026-10-11
 
