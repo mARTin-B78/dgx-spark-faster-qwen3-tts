@@ -55,3 +55,7 @@ venv/
 # Environment files
 .env
 .env.*
+
+# Local QA only (not published)
+qa.sh
+tests/
