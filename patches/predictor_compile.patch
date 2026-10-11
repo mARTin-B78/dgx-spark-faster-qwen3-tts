@@ -1,0 +1,25 @@
+diff --git a/faster_qwen3_tts/predictor_graph.py b/faster_qwen3_tts/predictor_graph.py
+index 38a52ca..70851eb 100644
+--- a/faster_qwen3_tts/predictor_graph.py
++++ b/faster_qwen3_tts/predictor_graph.py
+@@ -13,6 +13,8 @@ Strategy:
+ - Unroll the full 15-step loop for deterministic shapes
+ - Capture the entire loop as a single CUDA graph
+ """
++import os
++
+ import torch
+ from transformers import StaticCache
+ from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
+@@ -175,6 +177,11 @@ class PredictorGraph:
+         self._init_cache_layers()
+         self._build_attention_masks()
+ 
++        # Opt-in: fuse the 15-step predictor loop with Inductor before graph capture.
++        # ~17% faster streaming on GB10 (0.6B); adds ~1 min to the first warmup.
++        if os.environ.get("TTS_COMPILE_PREDICTOR") == "1":
++            self._full_loop = torch.compile(self._full_loop, dynamic=False)
++
+         for _ in range(num_warmup):
+             self.static_cache.reset()
+             self._full_loop()

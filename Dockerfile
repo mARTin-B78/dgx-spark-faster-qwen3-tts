@@ -24,8 +24,8 @@ RUN git clone https://github.com/andimarafioti/faster-qwen3-tts.git /app && \
     cd /app && git checkout --detach ${FASTER_QWEN3_TTS_REF}
 
 # Apply DGX Spark patches (non_streaming_mode=True, per-voice temperature/top_k/top_p)
-COPY patches/openai_server.patch /tmp/
-RUN cd /app && git apply /tmp/openai_server.patch
+COPY patches/openai_server.patch patches/predictor_compile.patch /tmp/
+RUN cd /app && git apply /tmp/openai_server.patch && git apply /tmp/predictor_compile.patch
 
 # Create virtual environment (Ubuntu 24.04 enforces PEP 668)
 ENV VIRTUAL_ENV=/opt/venv
