@@ -32,6 +32,46 @@ import openai_server
 logger = logging.getLogger(__name__)
 
 
+# Speaker embeddings (.pt) are model-size specific (1.7B=2048-dim, 0.6B=1024-dim).
+# With EMBED_TAG set (e.g. "1.7b"/"0.6b") every voice's embedding lives next to its
+# reference audio as <name>.<tag>.pt, so several model sizes can share one voices.json.
+_EMBED_TAG = os.environ.get("EMBED_TAG", "").strip()
+
+
+def _retarget_embeddings(voice_cfg: dict) -> dict:
+    """Point voice_cfg at the per-model .pt beside the reference audio (idempotent)."""
+    ref_audio = voice_cfg.get("ref_audio")
+    if not _EMBED_TAG or not ref_audio or voice_cfg.get("_emb_tag") == _EMBED_TAG:
+        return voice_cfg
+    stem = os.path.splitext(ref_audio)[0]
+    pt = f"{stem}.{_EMBED_TAG}.pt"
+    legacy = voice_cfg.get("speaker_embeddings") or ""
+    try:
+        # ponytail: legacy /config/speakers/*.pt are 1.7B embeddings; adopt them once for the 1.7b tag only.
+        if _EMBED_TAG.lower() == "1.7b" and not os.path.exists(pt) and os.path.isfile(legacy):
+            import shutil
+            shutil.copy2(legacy, pt)
+        if os.path.exists(pt):
+            sources = [ref_audio, stem + ".txt", stem + ".reference.txt"]
+            newest = max(os.path.getmtime(f) for f in sources if os.path.exists(f))
+            if newest > os.path.getmtime(pt) + 1:  # reference changed -> embedding stale
+                os.remove(pt)
+    except OSError as exc:
+        logger.warning("Embedding retarget problem for %s: %s", pt, exc)
+    voice_cfg["speaker_embeddings"] = pt
+    voice_cfg["_emb_tag"] = _EMBED_TAG
+    return voice_cfg
+
+
+if _EMBED_TAG:
+    _orig_resolve_voice = openai_server.resolve_voice
+
+    def _resolve_voice_tagged(voice_name: str) -> dict:
+        return _retarget_embeddings(_orig_resolve_voice(voice_name))
+
+    openai_server.resolve_voice = _resolve_voice_tagged
+
+
 def _do_warmup():
     """Run one short generation to compile CUDA graphs before serving requests."""
     model = openai_server.tts_model
@@ -77,6 +117,7 @@ def _precompute_all_embeddings():
         return
         
     for voice_name, voice_cfg in list(voices.items()):
+        _retarget_embeddings(voice_cfg)
         # skip if already precomputed
         spk_emb_path = voice_cfg.get("speaker_embeddings") or voice_cfg.get("speaker embeddings")
         if spk_emb_path and os.path.isfile(spk_emb_path):
@@ -130,6 +171,11 @@ async def list_audio_voices():
 
 @openai_server.app.get('/v1/audio/models')
 async def list_audio_models():
+    return _models_response
+
+@openai_server.app.get('/voices')
+@openai_server.app.get('/v1/voices')
+async def list_voices():
     return _models_response
 
 # SillyTavern speaker endpoint

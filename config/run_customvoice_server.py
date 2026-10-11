@@ -321,6 +321,12 @@ async def list_audio_models():
     return _models_response
 
 
+@app.get("/voices")
+@app.get("/v1/voices")
+async def list_voices():
+    return _models_response
+
+
 @app.get("/speakers")
 async def get_speakers():
     return list(voices.keys())

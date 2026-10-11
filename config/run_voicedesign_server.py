@@ -392,6 +392,12 @@ async def list_audio_models():
     _reload_voices_if_changed()
     return _models_response
 
+@app.get("/voices")
+@app.get("/v1/voices")
+async def list_voices():
+    _reload_voices_if_changed()
+    return _models_response
+
 @app.get("/speakers")
 async def get_speakers():
     _reload_voices_if_changed()

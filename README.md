@@ -378,6 +378,14 @@ The first request after container startup can be slower because CUDA graph captu
 
 ## Changelog
 
+### v6.14.0 — 2026-10-11
+
+- **Feature:** `EMBED_TAG` environment variable (e.g. `1.7b`, `0.6b`). Speaker embeddings are stored beside the reference audio as `<name>.<tag>.pt`, so a 1.7B VoiceClone and a 0.6B Streaming backend can share one `voices.json` and one voice folder (mount `/voices` read-write). Existing `config/speakers/*.pt` files are adopted once for the `1.7b` tag; embeddings older than their WAV/TXT are regenerated.
+- **Feature:** `/voices` and `/v1/voices` discovery endpoints on all backends.
+- **Config:** new `docker/docker-compose.portainer-0.6b.yml` — 1.7B VoiceClone on :8020 plus 0.6B-Base Streaming on :8023 (`--max-seq-len 2048`). The 0.6B model needs its own embeddings (1024-dim); never share `.pt` files between model sizes.
+- **Image:** unchanged (`:v6.13.1`); the changes live in `/config` (bind mount), no rebuild needed.
+- **Rollback:** redeploy the previous compose file (`:v6.13.1` images); `EMBED_TAG` unset keeps the old `/config/speakers` behaviour.
+
 ### v6.13.1 — 2026-10-04
 
 - **Fix:** Streaming must use the same model size as the one voices.json was built for (1.7B-Base), otherwise requests fail with a 1024 vs 2048 tensor size mismatch. Streaming compose examples now default to the 1.7B-Base model.
