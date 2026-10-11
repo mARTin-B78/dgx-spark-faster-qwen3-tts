@@ -19,8 +19,8 @@ One Docker image covers all four backends, with two semantic tag aliases:
 
 | Tag | Use for |
 |---|---|
-| `:latest` / `:v6` / `:v6.13.1` | VoiceClone, VoiceDesign, CustomVoice |
-| `:latest-streaming` / `:v6-streaming` / `:v6.13.1-streaming` | Streaming VoiceClone |
+| `:latest` / `:v6` / `:v6.15.0` | VoiceClone, VoiceDesign, CustomVoice |
+| `:latest-streaming` / `:v6-streaming` / `:v6.15.0-streaming` | Streaming VoiceClone |
 
 Both tags point to the same image — the `-streaming` suffix is a semantic convention so compose files and version pins are unambiguous.
 
@@ -384,7 +384,7 @@ The first request after container startup can be slower because CUDA graph captu
 ### v6.15.0 — 2026-10-11
 
 - **Perf (opt-in):** `TTS_COMPILE_PREDICTOR=1` compiles the 15-step code-predictor loop with `torch.compile` (Inductor/Triton) before CUDA-graph capture. Profiling showed the predictor needs ~5350 kernels per frame (about 54 % of the decode time); fusing them cuts its replay from ~23 ms to ~17.5 ms. Measured through the API on GB10 with the 0.6B-Base streaming server (same voice and text, other TTS containers stopped): 1.6–1.7x -> 1.8x real-time on long text, first audio ~670 ms -> ~550 ms. Listening comparison of 5 voices: no audible difference. Costs about one extra minute at startup. Default is off (unchanged behaviour).
-- **Image:** rebuilt as `v6.15.0` / `v6.15.0-streaming` (adds `patches/predictor_compile.patch`). Built locally; not yet pushed to Docker Hub, so the tag table above still lists `v6.13.1` until it is.
+- **Image:** rebuilt as `v6.15.0` / `v6.15.0-streaming` (adds `patches/predictor_compile.patch`) and pushed to Docker Hub together with the `:v6`, `:latest`, `:v6-streaming` and `:latest-streaming` aliases.
 - **Investigation notes:** memory pressure/swap, GPU clocks, CPU core type and `chunk_size` do not limit throughput; `float16` fails (inf/NaN logits, device-side assert); flash-attn is irrelevant for single-token decode. F5-TTS, EmoKnob and Breeze-TTS-2 were benchmarked against Qwen3-TTS: slower than real-time (Breeze 0.5x, EmoKnob 0.1x) or without streaming/German (F5 ~5x) and not usable quality-wise in our test.
 - **Rollback:** unset `TTS_COMPILE_PREDICTOR` (or use the `:v6.13.1` image).
 
